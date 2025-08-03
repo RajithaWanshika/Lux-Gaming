@@ -4,8 +4,10 @@ const helmet = require("helmet");
 const orderRoutes = require("./routes/orderRoutes");
 const { initDB } = require("./db/pool");
 const { collectDefaultMetrics } = require("prom-client");
-const { strictRouteValidator } = require("./middlewares/strictRouteValidator");
-const { authenticateToken } = require("./middlewares/authenticateToken");
+const strictRouteValidator = require("./middlewares/strictRouteValidator");
+const authenticateToken = require("./middlewares/authenticateToken");
+const { register } = require("./metrics/metrics");
+
 require("dotenv").config();
 
 const app = express();
@@ -125,11 +127,30 @@ async function startServer() {
       console.log(`🏥 Health check at http://${host}:${PORT}/health`);
     });
 
-    process.on("SIGTERM", () => {
-      console.log("SIGTERM received, shutting down gracefully");
-      server.close(() => {
-        console.log("Order service terminated");
+    const shutdown = async (signal) => {
+      console.log(`${signal} received, shutting down gracefully`);
+      server.close(async () => {
+        console.log("HTTP server closed");
+
+        try {
+          await pool.end();
+          console.log("Database connections closed");
+
+          console.log("Order service terminated");
+          process.exit(0);
+        } catch (error) {
+          console.error("Error during shutdown:", error);
+          process.exit(1);
+        }
       });
+    };
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("SIGUSR2", () => shutdown("SIGUSR2"));
+    process.on("uncaughtException", (error) => {
+      console.error("Uncaught exception:", error);
+      shutdown("uncaughtException");
     });
   } catch (error) {
     console.error("Failed to start Order service:", error);
