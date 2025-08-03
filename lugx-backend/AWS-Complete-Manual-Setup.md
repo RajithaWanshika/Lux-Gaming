@@ -5,6 +5,7 @@ This guide provides step-by-step instructions for manually deploying your LUGX G
 ## 🏗️ Architecture Overview
 
 Your final setup will include:
+
 - **VPC** with public/private subnets across 2 AZs
 - **Aurora PostgreSQL** clusters for User, Game, and Order services
 - **EC2 instances** for each microservice
@@ -25,9 +26,11 @@ Your final setup will include:
 ### 1.1 Create VPC
 
 1. **Navigate to VPC Console**
+
    - AWS Console → VPC → Create VPC
 
 2. **VPC Configuration**
+
    ```
    Name tag: lugx-gaming-vpc
    IPv4 CIDR block: 10.0.0.0/16
@@ -43,6 +46,7 @@ Your final setup will include:
 ### 1.2 Create Internet Gateway
 
 1. **Create Internet Gateway**
+
    ```
    Name tag: lugx-gaming-igw
    ```
@@ -54,6 +58,7 @@ Your final setup will include:
 ### 1.3 Create Subnets
 
 #### Public Subnets (for Load Balancer)
+
 ```
 1. Name: lugx-public-subnet-1
    VPC: lugx-gaming-vpc
@@ -69,6 +74,7 @@ Your final setup will include:
 ```
 
 #### Private Subnets for Applications
+
 ```
 3. Name: lugx-app-subnet-1
    VPC: lugx-gaming-vpc
@@ -82,6 +88,7 @@ Your final setup will include:
 ```
 
 #### Private Subnets for Databases
+
 ```
 5. Name: lugx-database-subnet-1
    VPC: lugx-gaming-vpc
@@ -97,6 +104,7 @@ Your final setup will include:
 ### 1.4 Create NAT Gateway
 
 1. **Create NAT Gateway**
+
    ```
    Name: lugx-nat-gateway
    Subnet: lugx-public-subnet-1
@@ -108,13 +116,16 @@ Your final setup will include:
 ### 1.5 Setup Route Tables
 
 #### Public Route Table
+
 1. **Create Route Table**
+
    ```
    Name: lugx-public-rt
    VPC: lugx-gaming-vpc
    ```
 
 2. **Add Route**
+
    ```
    Destination: 0.0.0.0/0
    Target: Internet Gateway (lugx-gaming-igw)
@@ -125,13 +136,16 @@ Your final setup will include:
    - Select: lugx-public-subnet-1, lugx-public-subnet-2
 
 #### Private Route Table
+
 1. **Create Route Table**
+
    ```
    Name: lugx-private-rt
    VPC: lugx-gaming-vpc
    ```
 
 2. **Add Route**
+
    ```
    Destination: 0.0.0.0/0
    Target: NAT Gateway (lugx-nat-gateway)
@@ -145,6 +159,7 @@ Your final setup will include:
 ## 🔒 STEP 2: Security Groups
 
 ### 2.1 Load Balancer Security Group
+
 ```
 Name: lugx-alb-sg
 Description: Security group for Application Load Balancer
@@ -159,6 +174,7 @@ Outbound Rules:
 ```
 
 ### 2.2 API Gateway Security Group
+
 ```
 Name: lugx-api-gateway-sg
 Description: Security group for API Gateway
@@ -173,6 +189,7 @@ Outbound Rules:
 ```
 
 ### 2.3 Microservices Security Group
+
 ```
 Name: lugx-microservices-sg
 Description: Security group for microservices
@@ -190,6 +207,7 @@ Outbound Rules:
 ```
 
 ### 2.4 Database Security Group
+
 ```
 Name: lugx-database-sg
 Description: Security group for PostgreSQL databases
@@ -218,38 +236,40 @@ Outbound Rules:
    Subnets: lugx-database-subnet-1, lugx-database-subnet-2
    ```
 
-### 3.2 Create Single Aurora PostgreSQL Cluster
+### 3.2 Create Aurora Serverless v2 Cluster
 
-#### Shared Database Cluster for All Services
+#### Shared Serverless Cluster for All Services
+
 1. **RDS Console** → Create database
+
    ```
    Engine type: Amazon Aurora
    Edition: Aurora PostgreSQL
    Version: Aurora PostgreSQL 15.4
-   Templates: Dev/Test
-   
+   Templates: Serverless
+
    Settings:
    DB cluster identifier: lugx-main-cluster
    Master username: lugx_admin
    Master password: [Generate secure password - SAVE THIS!]
-   
-   Instance configuration:
-   DB instance class: db.t4g.large (larger instance for all services)
-   Multi-AZ deployment: No (for dev), Yes (for production)
-   
+
+   Serverless v2 scaling configuration:
+   Minimum Aurora capacity units: 0.5 (dev) / 1.0 (prod)
+   Maximum Aurora capacity units: 4.0 (dev) / 8.0 (prod)
+
    Connectivity:
    VPC: lugx-gaming-vpc
    DB subnet group: lugx-db-subnet-group
    Public access: No
    VPC security groups: lugx-database-sg
-   
+
    Database options:
    Initial database name: lugx_main_db
-   
+
    Backup:
    Backup retention period: 7 days
    Backup window: 03:00-04:00 UTC
-   
+
    Monitoring:
    ✅ Enable Performance Insights
    Performance Insights retention: 7 days (free)
@@ -280,14 +300,16 @@ GRANT ALL PRIVILEGES ON DATABASE lugx_order_db TO lugx_order_service;
 ```
 
 ### 3.4 Note Database Endpoint
+
 After creation, save this single endpoint (same for all services):
+
 ```
 Shared Cluster: lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
 Port: 5432
 
 Databases:
 - lugx_user_db (for User Service)
-- lugx_game_db (for Game Service)  
+- lugx_game_db (for Game Service)
 - lugx_order_db (for Order Service)
 ```
 
@@ -296,6 +318,7 @@ Databases:
 ## 🖥️ STEP 4: EC2 Instances
 
 ### 4.1 Create Key Pair
+
 1. **EC2 Console** → Key Pairs → Create key pair
    ```
    Name: lugx-gaming-keypair
@@ -309,6 +332,7 @@ Databases:
 Create 5 instances:
 
 #### API Gateway Instance
+
 ```
 Name: lugx-api-gateway
 AMI: Amazon Linux 2023 AMI
@@ -322,6 +346,7 @@ Storage: 20 GB gp3
 ```
 
 #### User Service Instance
+
 ```
 Name: lugx-user-service
 Subnet: lugx-app-subnet-2
@@ -330,6 +355,7 @@ Security groups: lugx-microservices-sg
 ```
 
 #### Game Service Instance
+
 ```
 Name: lugx-game-service
 Subnet: lugx-app-subnet-1
@@ -338,6 +364,7 @@ Security groups: lugx-microservices-sg
 ```
 
 #### Order Service Instance
+
 ```
 Name: lugx-order-service
 Subnet: lugx-app-subnet-2
@@ -346,6 +373,7 @@ Security groups: lugx-microservices-sg
 ```
 
 #### Analytics Service Instance
+
 ```
 Name: lugx-analytics-service
 Instance type: t3.medium
@@ -362,17 +390,18 @@ Security groups: lugx-microservices-sg
 
 1. **EC2 Console** → Load Balancers → Create load balancer
 2. **Application Load Balancer**
+
    ```
    Name: lugx-gaming-alb
    Scheme: Internet-facing
    IP address type: IPv4
-   
+
    Network mapping:
    VPC: lugx-gaming-vpc
    Availability Zones:
    - us-east-1a: lugx-public-subnet-1
    - us-east-1b: lugx-public-subnet-2
-   
+
    Security groups: lugx-alb-sg
    ```
 
@@ -456,6 +485,7 @@ npm install
 ### 6.4 Configure Environment Variables
 
 #### API Gateway (.env)
+
 ```bash
 NODE_ENV=production
 PORT=3000
@@ -471,6 +501,7 @@ JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
 
 #### User Service (.env)
+
 ```bash
 NODE_ENV=production
 PORT=3001
@@ -483,6 +514,7 @@ JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
 
 #### Game Service (.env)
+
 ```bash
 NODE_ENV=production
 PORT=3002
@@ -493,6 +525,7 @@ DATABASE_URL=postgresql://lugx_game_service:secure_game_password@lugx-main-clust
 ```
 
 #### Order Service (.env)
+
 ```bash
 NODE_ENV=production
 PORT=3004
@@ -505,6 +538,7 @@ JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
 
 #### Analytics Service (.env)
+
 ```bash
 NODE_ENV=production
 PORT=3005
@@ -524,7 +558,7 @@ On each instance, start the respective service:
 # API Gateway
 pm2 start server.js --name "api-gateway"
 
-# User Service  
+# User Service
 pm2 start server.js --name "user-service"
 
 # Game Service
@@ -674,6 +708,7 @@ Total: ~$189/month (26% savings vs separate clusters)
 ## 💡 Cost Breakdown - Shared Cluster Benefits
 
 ### **Single Cluster vs Multiple Clusters:**
+
 ```
 Previous (3 clusters): 3 × db.t4g.medium = ~$110/month
 New (1 shared cluster): 1 × db.t4g.large = ~$42/month
@@ -681,6 +716,7 @@ Savings: $68/month (62% database cost reduction)
 ```
 
 ### **Why Shared Cluster is Cost-Effective:**
+
 - **Single instance** serving multiple databases
 - **Shared resources** (CPU, memory, I/O)
 - **One backup** instead of three
@@ -690,9 +726,10 @@ Savings: $68/month (62% database cost reduction)
 ## 🎉 Success!
 
 Your LUGX Gaming platform is now running on AWS with:
+
 - High availability across multiple AZs
 - Secure network isolation
 - Scalable database clusters
 - Load-balanced traffic distribution
 
-Access your application at: `http://your-alb-dns-name.us-east-1.elb.amazonaws.com` 
+Access your application at: `http://your-alb-dns-name.us-east-1.elb.amazonaws.com`
