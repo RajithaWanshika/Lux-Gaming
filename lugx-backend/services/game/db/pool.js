@@ -23,7 +23,7 @@ const pool = new Pool({
       : false,
   max: 5,
   idleTimeoutMillis: 10000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 20000,
 });
 
 async function initDB() {
