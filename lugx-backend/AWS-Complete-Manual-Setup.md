@@ -218,9 +218,9 @@ Outbound Rules:
    Subnets: lugx-database-subnet-1, lugx-database-subnet-2
    ```
 
-### 3.2 Create Aurora PostgreSQL Clusters
+### 3.2 Create Single Aurora PostgreSQL Cluster
 
-#### User Service Database
+#### Shared Database Cluster for All Services
 1. **RDS Console** → Create database
    ```
    Engine type: Amazon Aurora
@@ -229,13 +229,13 @@ Outbound Rules:
    Templates: Dev/Test
    
    Settings:
-   DB cluster identifier: lugx-user-cluster
-   Master username: lugx_user_admin
-   Master password: [Generate secure password]
+   DB cluster identifier: lugx-main-cluster
+   Master username: lugx_admin
+   Master password: [Generate secure password - SAVE THIS!]
    
    Instance configuration:
-   DB instance class: db.t4g.medium
-   Multi-AZ deployment: No (for dev)
+   DB instance class: db.t4g.large (larger instance for all services)
+   Multi-AZ deployment: No (for dev), Yes (for production)
    
    Connectivity:
    VPC: lugx-gaming-vpc
@@ -244,34 +244,51 @@ Outbound Rules:
    VPC security groups: lugx-database-sg
    
    Database options:
-   Initial database name: lugx_user_db
+   Initial database name: lugx_main_db
    
    Backup:
    Backup retention period: 7 days
+   Backup window: 03:00-04:00 UTC
+   
+   Monitoring:
+   ✅ Enable Performance Insights
+   Performance Insights retention: 7 days (free)
    ```
 
-#### Game Service Database
-```
-DB cluster identifier: lugx-game-cluster
-Master username: lugx_game_admin
-Initial database name: lugx_game_db
-[Same other settings]
+### 3.3 Create Individual Databases
+
+After the cluster is created, you'll create separate databases for each service:
+
+1. **Connect to the cluster** using any PostgreSQL client
+2. **Create databases** for each service:
+
+```sql
+-- Connect as lugx_admin user
+CREATE DATABASE lugx_user_db;
+CREATE DATABASE lugx_game_db;
+CREATE DATABASE lugx_order_db;
+
+-- Create service-specific users for better security
+CREATE USER lugx_user_service WITH PASSWORD 'secure_user_password';
+CREATE USER lugx_game_service WITH PASSWORD 'secure_game_password';
+CREATE USER lugx_order_service WITH PASSWORD 'secure_order_password';
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON DATABASE lugx_user_db TO lugx_user_service;
+GRANT ALL PRIVILEGES ON DATABASE lugx_game_db TO lugx_game_service;
+GRANT ALL PRIVILEGES ON DATABASE lugx_order_db TO lugx_order_service;
 ```
 
-#### Order Service Database
+### 3.4 Note Database Endpoint
+After creation, save this single endpoint (same for all services):
 ```
-DB cluster identifier: lugx-order-cluster
-Master username: lugx_order_admin
-Initial database name: lugx_order_db
-[Same other settings]
-```
+Shared Cluster: lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
+Port: 5432
 
-### 3.3 Note Database Endpoints
-After creation, save these endpoints:
-```
-User DB: lugx-user-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
-Game DB: lugx-game-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
-Order DB: lugx-order-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
+Databases:
+- lugx_user_db (for User Service)
+- lugx_game_db (for Game Service)  
+- lugx_order_db (for Order Service)
 ```
 
 ---
@@ -459,7 +476,8 @@ NODE_ENV=production
 PORT=3001
 HOST=0.0.0.0
 
-DATABASE_URL=postgresql://lugx_user_admin:your_password@lugx-user-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
+# Shared cluster with user-specific database
+DATABASE_URL=postgresql://lugx_user_service:secure_user_password@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
 
 JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
@@ -470,7 +488,8 @@ NODE_ENV=production
 PORT=3002
 HOST=0.0.0.0
 
-DATABASE_URL=postgresql://lugx_game_admin:your_password@lugx-game-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db
+# Shared cluster with game-specific database
+DATABASE_URL=postgresql://lugx_game_service:secure_game_password@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db
 ```
 
 #### Order Service (.env)
@@ -479,7 +498,8 @@ NODE_ENV=production
 PORT=3004
 HOST=0.0.0.0
 
-DATABASE_URL=postgresql://lugx_order_admin:your_password@lugx-order-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
+# Shared cluster with order-specific database
+DATABASE_URL=postgresql://lugx_order_service:secure_order_password@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
 
 JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
@@ -594,8 +614,13 @@ curl http://your-alb-dns-name.us-east-1.elb.amazonaws.com/health
 # Install PostgreSQL client on any instance
 sudo yum install -y postgresql15
 
-# Test connections
-psql -h lugx-user-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com -U lugx_user_admin -d lugx_user_db
+# Test main cluster connection
+psql -h lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com -U lugx_admin -d lugx_main_db
+
+# Test service-specific database connections
+psql -h lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com -U lugx_user_service -d lugx_user_db
+psql -h lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com -U lugx_game_service -d lugx_game_db
+psql -h lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com -U lugx_order_service -d lugx_order_db
 ```
 
 ### 8.3 Test API Endpoints
@@ -623,7 +648,7 @@ curl http://your-alb-dns-name/api/games
 - [ ] Internet Gateway and NAT Gateway configured
 - [ ] Route tables properly set up
 - [ ] 4 Security groups configured
-- [ ] 3 Aurora PostgreSQL clusters running
+- [ ] 1 Aurora PostgreSQL cluster with 3 databases running
 - [ ] 5 EC2 instances launched
 - [ ] Application Load Balancer created
 - [ ] Target group configured and healthy
@@ -638,13 +663,29 @@ curl http://your-alb-dns-name/api/games
 ## 💰 Cost Estimation (Monthly)
 
 ```
-Aurora PostgreSQL (3 clusters): ~$110
+Aurora PostgreSQL (1 shared cluster): ~$42
 EC2 instances (5 × t3.small/medium): ~$85
 Application Load Balancer: ~$20
 NAT Gateway: ~$32
 Data Transfer: ~$10
-Total: ~$257/month
+Total: ~$189/month (26% savings vs separate clusters)
 ```
+
+## 💡 Cost Breakdown - Shared Cluster Benefits
+
+### **Single Cluster vs Multiple Clusters:**
+```
+Previous (3 clusters): 3 × db.t4g.medium = ~$110/month
+New (1 shared cluster): 1 × db.t4g.large = ~$42/month
+Savings: $68/month (62% database cost reduction)
+```
+
+### **Why Shared Cluster is Cost-Effective:**
+- **Single instance** serving multiple databases
+- **Shared resources** (CPU, memory, I/O)
+- **One backup** instead of three
+- **One monitoring** setup instead of three
+- **Simplified management** and maintenance
 
 ## 🎉 Success!
 
