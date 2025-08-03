@@ -1,0 +1,32 @@
+{
+  "name": "analytics-service",
+  "version": "1.0.0",
+  "description": "Analytics and Tracking Service",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "author": "Rajitha",
+  "license": "MIT",
+  "dependencies": {
+    "@clickhouse/client": "^1.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.0.1",
+    "express-validator": "^7.2.1",
+    "geoip-lite": "^1.4.10",
+    "helmet": "^8.1.0",
+    "prom-client": "^15.1.3",
+    "ua-parser-js": "^2.0.4",
+    "uuid": "^11.0.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "jest": "^30.0.5",
+    "supertest": "^7.1.4"
+  }
+} 
