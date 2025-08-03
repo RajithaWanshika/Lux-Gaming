@@ -15,8 +15,7 @@ const services = [
     path: "./services/api-gateway",
     testFile: "test.js",
     port: 3000,
-    description:
-      "Request routing and JWT authentication gateway",
+    description: "Request routing and JWT authentication gateway",
   },
   {
     name: "User Service",
@@ -188,7 +187,6 @@ function printSummary(results) {
   console.log();
 
   const features = [
-
     "🔐 JWT Authentication with bcryptjs",
     "📊 Prometheus Metrics Collection",
     "🏥 Health Check Endpoints",
@@ -235,7 +233,6 @@ function printTechStackSummary() {
         "bcryptjs ^2.4.3 - Password hashing",
         "jsonwebtoken ^9.0.2 - JWT tokens",
         "Helmet ^8.1.0 - Security headers",
-    
       ],
     },
     {
@@ -385,7 +382,6 @@ async function main() {
     const result = await runTest(service);
     results.push(result);
 
-    // Add delay between tests to avoid port conflicts
     if (i < services.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
@@ -401,7 +397,7 @@ async function main() {
     console.log(
       colorize(
         "green",
-        "🎉 All tests passed! Your simplified microservices are ready for demo."
+        "🎉 All tests passed! microservices are ready for deployment."
       )
     );
   } else {
