@@ -95,13 +95,6 @@ async function insertSampleData() {
       first_name: "Demo",
       last_name: "Account",
     },
-    {
-      username: "admin",
-      email: "admin@example.com",
-      password: "admin123",
-      first_name: "Admin",
-      last_name: "User",
-    },
   ];
 
   for (const user of sampleUsers) {

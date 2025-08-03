@@ -93,21 +93,6 @@ const customReportLimiter = rateLimit({
   },
 });
 
-const adminAnalyticsLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 500,
-  message: {
-    error: "Admin rate limit exceeded for analytics operations",
-    code: "ADMIN_ANALYTICS_RATE_LIMIT_EXCEEDED",
-    retryAfter: 900,
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.user?.id || req.ip;
-  },
-});
-
 const bulkExportLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
@@ -181,7 +166,6 @@ module.exports = {
   dashboardQueryLimiter,
   realtimeAnalyticsLimiter,
   customReportLimiter,
-  adminAnalyticsLimiter,
   bulkExportLimiter,
   analyticsOperationsLimiter,
   createAnalyticsRateLimiter,

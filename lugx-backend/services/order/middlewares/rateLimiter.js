@@ -75,21 +75,6 @@ const orderStatusLimiter = rateLimit({
   },
 });
 
-const adminOrderLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: {
-    error: "Admin rate limit exceeded for order operations",
-    code: "ADMIN_ORDER_RATE_LIMIT_EXCEEDED",
-    retryAfter: 900,
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.user?.id || req.ip;
-  },
-});
-
 const orderOperationsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -138,7 +123,6 @@ module.exports = {
   orderUpdateLimiter,
   orderBrowsingLimiter,
   orderStatusLimiter,
-  adminOrderLimiter,
   orderOperationsLimiter,
   createOrderRateLimiter,
 };
