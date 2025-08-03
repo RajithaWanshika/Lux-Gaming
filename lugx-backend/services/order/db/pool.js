@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+require("dotenv").config();
 
 const getDbUrl = () => {
   if (process.env.NODE_ENV === "production") {

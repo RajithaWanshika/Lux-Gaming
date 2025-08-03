@@ -1,17 +1,22 @@
 const { Pool } = require("pg");
+require("dotenv").config();
 
 const getDbUrl = () => {
+  let dbUrl = "";
   if (process.env.NODE_ENV === "production") {
-    return String(process.env.DATABASE_URL);
+    dbUrl = process.env.DATABASE_URL;
   } else if (process.env.NODE_ENV === "development") {
-    return String(process.env.DATABASE_URL_DEV);
+    dbUrl = process.env.DATABASE_URL_DEV;
   } else {
-    return process.env.DATABASE_URL_TEST;
+    dbUrl = process.env.DATABASE_URL_TEST;
   }
+  return dbUrl;
 };
 
+const dbUrl = getDbUrl();
+
 const pool = new Pool({
-  connectionString: getDbUrl(),
+  connectionString: dbUrl,
   ssl:
     process.env.NODE_ENV === "production"
       ? { rejectUnauthorized: false }

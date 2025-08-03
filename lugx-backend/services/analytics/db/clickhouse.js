@@ -1,4 +1,5 @@
 const { createClient } = require("@clickhouse/client");
+require("dotenv").config();
 
 const getDbConfig = () => {
   if (process.env.NODE_ENV === "production") {
