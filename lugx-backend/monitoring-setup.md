@@ -582,14 +582,6 @@ echo "API Gateway: http://localhost:3000"
 
 ---
 
-## 📞 Support & Resources
-
-- **Prometheus**: http://localhost:9090
-- **Grafana**: http://localhost:3001 (admin/admin)
-- **API Documentation**: http://localhost:3000/api-docs
-- **Health Checks**: http://localhost:{port}/health
-- **Metrics**: http://localhost:{port}/metrics
-
 ### External Documentation:
 
 - **Prometheus Docs**: https://prometheus.io/docs/
