@@ -5,7 +5,6 @@ const orderRoutes = require("./routes/orderRoutes");
 const { initDB } = require("./db/pool");
 const { collectDefaultMetrics } = require("prom-client");
 const { strictRouteValidator } = require("./middlewares/strictRouteValidator");
-const { createRateLimiter } = require("./middlewares/rateLimiter");
 const { authenticateToken } = require("./middlewares/authenticateToken");
 require("dotenv").config();
 
@@ -79,8 +78,6 @@ const allowedRoutes = [
 ];
 
 app.use(strictRouteValidator(allowedRoutes));
-
-app.use(createRateLimiter);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

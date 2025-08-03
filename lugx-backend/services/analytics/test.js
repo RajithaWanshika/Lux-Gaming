@@ -44,71 +44,13 @@ let testGameInteractions = [
   },
 ];
 
-let requestCounts = {
-  events: 0,
-  pageviews: 0,
-  interactions: 0,
-  dashboard: 0,
-  realtime: 0,
-  reports: 0,
-};
 
-const testRateLimiters = {
-  events: (req, res, next) => {
-    requestCounts.events++;
-    if (requestCounts.events > 100) {
-      return res
-        .status(429)
-        .json({ error: "Too many event tracking requests" });
-    }
-    next();
-  },
-  pageviews: (req, res, next) => {
-    requestCounts.pageviews++;
-    if (requestCounts.pageviews > 100) {
-      return res
-        .status(429)
-        .json({ error: "Too many pageview tracking requests" });
-    }
-    next();
-  },
-  interactions: (req, res, next) => {
-    requestCounts.interactions++;
-    if (requestCounts.interactions > 50) {
-      return res
-        .status(429)
-        .json({ error: "Too many interaction tracking requests" });
-    }
-    next();
-  },
-  dashboard: (req, res, next) => {
-    requestCounts.dashboard++;
-    if (requestCounts.dashboard > 20) {
-      return res.status(429).json({ error: "Too many dashboard requests" });
-    }
-    next();
-  },
-  realtime: (req, res, next) => {
-    requestCounts.realtime++;
-    if (requestCounts.realtime > 30) {
-      return res.status(429).json({ error: "Too many realtime requests" });
-    }
-    next();
-  },
-  reports: (req, res, next) => {
-    requestCounts.reports++;
-    if (requestCounts.reports > 10) {
-      return res.status(429).json({ error: "Too many report requests" });
-    }
-    next();
-  },
-};
 
 function createTestApp() {
   const app = express();
   app.use(express.json());
 
-  app.post("/analytics/events", testRateLimiters.events, (req, res) => {
+  app.post("/analytics/events", (req, res) => {
     const {
       event_type,
       event_category,
@@ -156,7 +98,7 @@ function createTestApp() {
     });
   });
 
-  app.post("/analytics/pageviews", testRateLimiters.pageviews, (req, res) => {
+  app.post("/analytics/pageviews", (req, res) => {
     const {
       page_url,
       page_title,
@@ -195,7 +137,6 @@ function createTestApp() {
 
   app.post(
     "/analytics/game-interactions",
-    testRateLimiters.interactions,
     (req, res) => {
       const {
         game_id,
@@ -235,7 +176,7 @@ function createTestApp() {
     }
   );
 
-  app.get("/analytics/dashboard", testRateLimiters.dashboard, (req, res) => {
+  app.get("/analytics/dashboard", (req, res) => {
     const { period = "7d" } = req.query;
 
     const dateFrom = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -302,7 +243,7 @@ function createTestApp() {
     });
   });
 
-  app.get("/analytics/realtime", testRateLimiters.realtime, (req, res) => {
+  app.get("/analytics/realtime", (req, res) => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
     const recentEvents = testEvents.filter(
@@ -339,7 +280,7 @@ function createTestApp() {
     });
   });
 
-  app.post("/analytics/reports", testRateLimiters.reports, (req, res) => {
+  app.post("/analytics/reports", (req, res) => {
     const { report_type, date_range } = req.body;
 
     if (!report_type) {

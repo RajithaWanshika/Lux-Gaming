@@ -70,49 +70,13 @@ let testReviews = [
   },
 ];
 
-let requestCounts = {
-  browsing: 0,
-  creation: 0,
-  search: 0,
-  detailed: 0,
-};
 
-const testRateLimiters = {
-  browsing: (req, res, next) => {
-    requestCounts.browsing++;
-    if (requestCounts.browsing > 100) {
-      return res.status(429).json({ error: "Too many browsing requests" });
-    }
-    next();
-  },
-  creation: (req, res, next) => {
-    requestCounts.creation++;
-    if (requestCounts.creation > 10) {
-      return res.status(429).json({ error: "Too many creation requests" });
-    }
-    next();
-  },
-  search: (req, res, next) => {
-    requestCounts.search++;
-    if (requestCounts.search > 50) {
-      return res.status(429).json({ error: "Too many search requests" });
-    }
-    next();
-  },
-  detailed: (req, res, next) => {
-    requestCounts.detailed++;
-    if (requestCounts.detailed > 50) {
-      return res.status(429).json({ error: "Too many detailed requests" });
-    }
-    next();
-  },
-};
 
 function createTestApp() {
   const app = express();
   app.use(express.json());
 
-  app.get("/games", testRateLimiters.browsing, (req, res) => {
+  app.get("/games", (req, res) => {
     const { category, title, sort, limit, offset } = req.query;
 
     let filteredGames = [...testGames];
@@ -168,7 +132,7 @@ function createTestApp() {
     });
   });
 
-  app.get("/games/:id", testRateLimiters.browsing, (req, res) => {
+  app.get("/games/:id", (req, res) => {
     const gameId = parseInt(req.params.id);
     const { with_review } = req.query;
     const game = testGames.find((g) => g.id === gameId);
@@ -195,7 +159,7 @@ function createTestApp() {
     res.json(responseData);
   });
 
-  app.get("/games/categories", testRateLimiters.browsing, (req, res) => {
+  app.get("/games/categories", (req, res) => {
     const categories = [...new Set(testGames.map((game) => game.category))];
     const categoryStats = categories.map((category) => ({
       name: category,
@@ -205,7 +169,7 @@ function createTestApp() {
     res.json({ categories: categoryStats });
   });
 
-  app.post("/games", testRateLimiters.creation, (req, res) => {
+  app.post("/games", (req, res) => {
     const {
       title,
       description,

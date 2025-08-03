@@ -47,46 +47,9 @@ const testAuth = (req, res, next) => {
   }
 };
 
-let requestCounts = {
-  registration: 0,
-  login: 0,
-  general: 0,
-};
 
-const testRateLimiters = {
-  registration: (req, res, next) => {
-    requestCounts.registration++;
-    if (requestCounts.registration > 5) {
-      return res.status(429).json({
-        error: "Too many accounts created",
-        code: "REGISTRATION_RATE_LIMIT_EXCEEDED",
-      });
-    }
-    next();
-  },
-  login: (req, res, next) => {
-    requestCounts.login++;
-    if (requestCounts.login > 5) {
-      return res.status(429).json({
-        error: "Too many login attempts",
-        code: "LOGIN_RATE_LIMIT_EXCEEDED",
-      });
-    }
-    next();
-  },
-  general: (req, res, next) => {
-    requestCounts.general++;
-    if (requestCounts.general > 50) {
-      return res.status(429).json({
-        error: "Too many requests",
-        code: "USER_OPERATIONS_RATE_LIMIT_EXCEEDED",
-      });
-    }
-    next();
-  },
-};
 
-app.post("/register", testRateLimiters.registration, async (req, res) => {
+app.post("/register", async (req, res) => {
   const { username, email, password, first_name, last_name } = req.body;
 
   if (!username || !email || !password) {
@@ -133,7 +96,7 @@ app.post("/register", testRateLimiters.registration, async (req, res) => {
   });
 });
 
-app.post("/login", testRateLimiters.login, async (req, res) => {
+app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -177,7 +140,7 @@ app.post("/login", testRateLimiters.login, async (req, res) => {
   });
 });
 
-app.get("/users", testRateLimiters.general, (req, res) => {
+app.get("/users", (req, res) => {
   const { page = 1, limit = 10, search } = req.query;
 
   let filteredUsers = [...testUsers];
@@ -213,7 +176,7 @@ app.get("/users", testRateLimiters.general, (req, res) => {
   });
 });
 
-app.get("/users/:id", testRateLimiters.general, (req, res) => {
+app.get("/users/:id", (req, res) => {
   const userId = parseInt(req.params.id);
   const user = testUsers.find((u) => u.id === userId);
 
@@ -225,7 +188,7 @@ app.get("/users/:id", testRateLimiters.general, (req, res) => {
   res.json(userWithoutPassword);
 });
 
-app.post("/users", testAuth, testRateLimiters.general, async (req, res) => {
+app.post("/users", testAuth, async (req, res) => {
   const { username, email, password, first_name, last_name } = req.body;
 
   if (!username || !email || !password) {
@@ -265,7 +228,7 @@ app.post("/users", testAuth, testRateLimiters.general, async (req, res) => {
   });
 });
 
-app.put("/users/:id", testAuth, testRateLimiters.general, (req, res) => {
+app.put("/users/:id", testAuth, (req, res) => {
   const userId = parseInt(req.params.id);
   const { username, email, first_name, last_name, is_active } = req.body;
 
@@ -288,7 +251,7 @@ app.put("/users/:id", testAuth, testRateLimiters.general, (req, res) => {
   });
 });
 
-app.delete("/users/:id", testAuth, testRateLimiters.general, (req, res) => {
+app.delete("/users/:id", testAuth, (req, res) => {
   const userId = parseInt(req.params.id);
   const userIndex = testUsers.findIndex((u) => u.id === userId);
 

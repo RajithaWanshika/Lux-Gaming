@@ -5,8 +5,6 @@ const jwt = require("jsonwebtoken");
 const app = express();
 app.use(express.json());
 
-const testRateLimiter = (req, res, next) => next();
-
 const testAuth = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -20,8 +18,6 @@ const testAuth = (req, res, next) => {
   }
   next();
 };
-
-app.use(testRateLimiter);
 
 app.get("/health", (req, res) => {
   res.json({
@@ -71,22 +67,7 @@ app.get("/api/users/profile", testAuth, (req, res) => {
   res.json({ id: req.user.id, username: req.user.username });
 });
 
-let requestCount = 0;
-app.get("/api/test-rate-limit", (req, res) => {
-  requestCount++;
-  if (requestCount > 5) {
-    return res.status(429).json({
-      error: "Too many requests",
-      code: "RATE_LIMIT_EXCEEDED",
-    });
-  }
-  res.json({ message: "Success", count: requestCount });
-});
-
 describe("API Gateway Service", () => {
-  beforeEach(() => {
-    requestCount = 0;
-  });
 
   describe("Health Check", () => {
     it("should return service status", async () => {
@@ -175,28 +156,7 @@ describe("API Gateway Service", () => {
     });
   });
 
-  describe("Rate Limiting", () => {
-    it("should allow requests under the limit", async () => {
-      for (let i = 1; i <= 5; i++) {
-        const response = await request(app).get("/api/test-rate-limit");
 
-        expect(response.status).toBe(200);
-        expect(response.body.count).toBe(i);
-      }
-    });
-
-    it("should block requests over the limit", async () => {
-      for (let i = 1; i <= 5; i++) {
-        await request(app).get("/api/test-rate-limit");
-      }
-
-      const response = await request(app).get("/api/test-rate-limit");
-
-      expect(response.status).toBe(429);
-      expect(response.body.error).toBe("Too many requests");
-      expect(response.body.code).toBe("RATE_LIMIT_EXCEEDED");
-    });
-  });
 
   describe("Request Validation", () => {
     it("should reject invalid JSON", async () => {

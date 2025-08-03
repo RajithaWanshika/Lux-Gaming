@@ -68,47 +68,9 @@ const testAuth = (req, res, next) => {
   }
 };
 
-let requestCounts = {
-  creation: 0,
-  browsing: 0,
-  cancellation: 0,
-};
 
-const testRateLimiters = {
-  creation: (req, res, next) => {
-    requestCounts.creation++;
-    if (requestCounts.creation > 3) {
-      return res.status(429).json({
-        error:
-          "Too many orders created, please wait before placing another order",
-        code: "ORDER_CREATION_RATE_LIMIT_EXCEEDED",
-      });
-    }
-    next();
-  },
-  browsing: (req, res, next) => {
-    requestCounts.browsing++;
-    if (requestCounts.browsing > 30) {
-      return res.status(429).json({
-        error: "Too many order requests, please slow down",
-        code: "ORDER_BROWSING_RATE_LIMIT_EXCEEDED",
-      });
-    }
-    next();
-  },
-  cancellation: (req, res, next) => {
-    requestCounts.cancellation++;
-    if (requestCounts.cancellation > 5) {
-      return res.status(429).json({
-        error: "Too many order cancellations, please contact support",
-        code: "ORDER_CANCELLATION_RATE_LIMIT_EXCEEDED",
-      });
-    }
-    next();
-  },
-};
 
-app.post("/orders", testAuth, testRateLimiters.creation, (req, res) => {
+app.post("/orders", testAuth, (req, res) => {
   const userId = req.user.id;
   const { items } = req.body;
 
@@ -154,7 +116,7 @@ app.post("/orders", testAuth, testRateLimiters.creation, (req, res) => {
   });
 });
 
-app.get("/orders", testAuth, testRateLimiters.browsing, (req, res) => {
+app.get("/orders", testAuth, (req, res) => {
   const userId = req.user.id;
   const { page = 1, limit = 10, status } = req.query;
 
@@ -181,7 +143,7 @@ app.get("/orders", testAuth, testRateLimiters.browsing, (req, res) => {
   });
 });
 
-app.get("/orders/:id", testAuth, testRateLimiters.browsing, (req, res) => {
+app.get("/orders/:id", testAuth, (req, res) => {
   const userId = req.user.id;
   const orderId = parseInt(req.params.id);
 
@@ -237,7 +199,6 @@ app.put("/orders/:id", testAuth, (req, res) => {
 app.delete(
   "/orders/:id",
   testAuth,
-  testRateLimiters.cancellation,
   (req, res) => {
     const userId = req.user.id;
     const orderId = parseInt(req.params.id);
@@ -388,26 +349,7 @@ describe("Order Service API", () => {
       expect(response.body.error).toBe("Items are required");
     });
 
-    it("should enforce rate limiting", async () => {
-      const orderData = {
-        items: [{ game_id: 1, quantity: 1, unit_price: 10 }],
-      };
 
-      for (let i = 0; i < 4; i++) {
-        await request(app)
-          .post("/orders")
-          .set("Authorization", `Bearer ${authToken}`)
-          .send(orderData);
-      }
-
-      const response = await request(app)
-        .post("/orders")
-        .set("Authorization", `Bearer ${authToken}`)
-        .send(orderData);
-
-      expect(response.status).toBe(429);
-      expect(response.body.code).toBe("ORDER_CREATION_RATE_LIMIT_EXCEEDED");
-    });
   });
 
   describe("GET /orders", () => {

@@ -16,7 +16,7 @@ const services = [
     testFile: "test.js",
     port: 3000,
     description:
-      "Request routing, JWT authentication, and rate limiting gateway",
+      "Request routing and JWT authentication gateway",
   },
   {
     name: "User Service",
@@ -188,7 +188,7 @@ function printSummary(results) {
   console.log();
 
   const features = [
-    "🚦 Express Rate Limiting (General + Auth)",
+
     "🔐 JWT Authentication with bcryptjs",
     "📊 Prometheus Metrics Collection",
     "🏥 Health Check Endpoints",
@@ -235,7 +235,7 @@ function printTechStackSummary() {
         "bcryptjs ^2.4.3 - Password hashing",
         "jsonwebtoken ^9.0.2 - JWT tokens",
         "Helmet ^8.1.0 - Security headers",
-        "Express Rate Limit ^8.0.1 - DDoS protection",
+    
       ],
     },
     {

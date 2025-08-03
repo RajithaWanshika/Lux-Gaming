@@ -2,7 +2,6 @@ const express = require("express");
 const { initDB } = require("./db/clickhouse");
 const analyticsRoutes = require("./routes/analytics.routes");
 const { collectDefaultMetrics } = require("prom-client");
-const { createAnalyticsRateLimiter } = require("./middlewares/rateLimiter");
 const helmet = require("helmet");
 const cors = require("cors");
 require("dotenv").config();
@@ -19,8 +18,6 @@ app.use(express.urlencoded({ extended: true }));
 
 const register = require("prom-client").register;
 collectDefaultMetrics({ register });
-
-app.use(createAnalyticsRateLimiter);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

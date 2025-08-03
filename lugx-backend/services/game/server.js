@@ -4,7 +4,6 @@ const gameRoutes = require("./routes/gameRoutes");
 const { collectDefaultMetrics } = require("prom-client");
 const { register } = require("./metrics/metrics");
 const strictRouteValidator = require("./middlewares/strictRouteValidator");
-const { createGameRateLimiter } = require("./middlewares/rateLimiter");
 const helmet = require("helmet");
 const cors = require("cors");
 require("dotenv").config();
@@ -79,8 +78,6 @@ const allowedRoutes = [
 ];
 
 app.use(strictRouteValidator(allowedRoutes));
-
-app.use(createGameRateLimiter);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

@@ -3,7 +3,6 @@ const cors = require("cors");
 const helmet = require("helmet");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 const { authenticateToken } = require("./middlewares/authenticateToken");
-const { generalLimiter, authLimiter } = require("./middlewares/rateLimiter");
 
 require("dotenv").config();
 

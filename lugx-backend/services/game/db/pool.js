@@ -2,9 +2,9 @@ const { Pool } = require("pg");
 
 const getDbUrl = () => {
   if (process.env.NODE_ENV === "production") {
-    return process.env.DATABASE_URL;
+    return String(process.env.DATABASE_URL);
   } else if (process.env.NODE_ENV === "development") {
-    return process.env.DATABASE_URL_DEV;
+    return String(process.env.DATABASE_URL_DEV);
   } else {
     return process.env.DATABASE_URL_TEST;
   }
