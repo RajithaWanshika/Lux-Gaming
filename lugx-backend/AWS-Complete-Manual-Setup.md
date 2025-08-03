@@ -236,82 +236,232 @@ Outbound Rules:
    Subnets: lugx-database-subnet-1, lugx-database-subnet-2
    ```
 
-### 3.2 Create Aurora Serverless v2 Cluster
+### 3.2 Choose Database Architecture
+
+You have two options for database setup:
+
+#### **Option A: Shared Cluster (Cost-Effective - Recommended)**
+- **Single Aurora cluster** with multiple databases
+- **Cost**: ~$25-42/month
+- **Best for**: Development, cost optimization, simple management
+
+#### **Option B: Separate Clusters (Maximum Isolation)**
+- **Individual Aurora cluster** per service
+- **Cost**: ~$75-105/month
+- **Best for**: Production, service isolation, independent scaling
+
+---
+
+## 🌟 **Option A: Shared Cluster Setup**
+
+### 3.2A Create Single Aurora Serverless v2 Cluster
 
 #### Shared Serverless Cluster for All Services
-
 1. **RDS Console** → Create database
-
    ```
    Engine type: Amazon Aurora
    Edition: Aurora PostgreSQL
    Version: Aurora PostgreSQL 15.4
    Templates: Serverless
-
+   
    Settings:
    DB cluster identifier: lugx-main-cluster
    Master username: lugx_admin
    Master password: [Generate secure password - SAVE THIS!]
-
+   
    Serverless v2 scaling configuration:
    Minimum Aurora capacity units: 0.5 (dev) / 1.0 (prod)
    Maximum Aurora capacity units: 4.0 (dev) / 8.0 (prod)
-
+   
    Connectivity:
    VPC: lugx-gaming-vpc
    DB subnet group: lugx-db-subnet-group
    Public access: No
    VPC security groups: lugx-database-sg
-
+   
    Database options:
    Initial database name: lugx_main_db
-
+   
    Backup:
    Backup retention period: 7 days
    Backup window: 03:00-04:00 UTC
-
+   
    Monitoring:
    ✅ Enable Performance Insights
    Performance Insights retention: 7 days (free)
    ```
 
-### 3.3 Create Individual Databases
+### 3.3A Create Individual Databases
 
-After the cluster is created, you'll create separate databases for each service:
+After the cluster is created, create separate databases for each service:
 
-1. **Connect to the cluster** using any PostgreSQL client
-2. **Create databases** for each service:
+1. **Connect using AWS CloudShell or EC2 instance**:
+```bash
+# Using AWS CloudShell (recommended):
+sudo yum install -y postgresql15
+psql -h lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com -U lugx_admin -d postgres
+```
 
+2. **Create databases and users**:
 ```sql
--- Connect as lugx_admin user
+-- Create separate databases for each service
 CREATE DATABASE lugx_user_db;
 CREATE DATABASE lugx_game_db;
 CREATE DATABASE lugx_order_db;
 
 -- Create service-specific users for better security
-CREATE USER lugx_user_service WITH PASSWORD 'secure_user_password';
-CREATE USER lugx_game_service WITH PASSWORD 'secure_game_password';
-CREATE USER lugx_order_service WITH PASSWORD 'secure_order_password';
+CREATE USER lugx_user_service WITH PASSWORD 'SecureUserPass123!';
+CREATE USER lugx_game_service WITH PASSWORD 'SecureGamePass123!';
+CREATE USER lugx_order_service WITH PASSWORD 'SecureOrderPass123!';
 
--- Grant permissions
+-- Grant database permissions
 GRANT ALL PRIVILEGES ON DATABASE lugx_user_db TO lugx_user_service;
 GRANT ALL PRIVILEGES ON DATABASE lugx_game_db TO lugx_game_service;
 GRANT ALL PRIVILEGES ON DATABASE lugx_order_db TO lugx_order_service;
+
+-- Grant connect permissions
+GRANT CONNECT ON DATABASE lugx_user_db TO lugx_user_service;
+GRANT CONNECT ON DATABASE lugx_game_db TO lugx_game_service;
+GRANT CONNECT ON DATABASE lugx_order_db TO lugx_order_service;
+
+-- Set default privileges for each database
+\c lugx_user_db lugx_admin
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO lugx_user_service;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO lugx_user_service;
+GRANT ALL ON SCHEMA public TO lugx_user_service;
+
+\c lugx_game_db lugx_admin
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO lugx_game_service;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO lugx_game_service;
+GRANT ALL ON SCHEMA public TO lugx_game_service;
+
+\c lugx_order_db lugx_admin
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO lugx_order_service;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO lugx_order_service;
+GRANT ALL ON SCHEMA public TO lugx_order_service;
 ```
 
-### 3.4 Note Database Endpoint
-
-After creation, save this single endpoint (same for all services):
-
+### 3.4A Note Shared Database Endpoint
 ```
 Shared Cluster: lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
 Port: 5432
 
-Databases:
-- lugx_user_db (for User Service)
-- lugx_game_db (for Game Service)
-- lugx_order_db (for Order Service)
+Connection Strings:
+- User Service: postgresql://lugx_user_service:SecureUserPass123!@lugx-main-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
+- Game Service: postgresql://lugx_game_service:SecureGamePass123!@lugx-main-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db  
+- Order Service: postgresql://lugx_order_service:SecureOrderPass123!@lugx-main-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
 ```
+
+---
+
+## 🏗️ **Option B: Separate Clusters Setup**
+
+### 3.2B Create Separate Aurora Clusters
+
+#### User Service Cluster
+1. **RDS Console** → Create database
+   ```
+   Engine type: Amazon Aurora
+   Edition: Aurora PostgreSQL
+   Version: Aurora PostgreSQL 15.4
+   Templates: Serverless
+   
+   Settings:
+   DB cluster identifier: lugx-user-cluster
+   Master username: lugx_user_admin
+   Master password: [Generate secure password - SAVE THIS!]
+   
+   Serverless v2 scaling configuration:
+   Minimum Aurora capacity units: 0.5 (dev) / 1.0 (prod)
+   Maximum Aurora capacity units: 2.0 (dev) / 4.0 (prod)
+   
+   Connectivity:
+   VPC: lugx-gaming-vpc
+   DB subnet group: lugx-db-subnet-group
+   Public access: No
+   VPC security groups: lugx-database-sg
+   
+   Database options:
+   Initial database name: lugx_user_db
+   
+   Backup:
+   Backup retention period: 7 days
+   ```
+
+#### Game Service Cluster
+2. **RDS Console** → Create database
+   ```
+   Settings:
+   DB cluster identifier: lugx-game-cluster
+   Master username: lugx_game_admin
+   Master password: [Generate secure password - SAVE THIS!]
+   Initial database name: lugx_game_db
+   
+   [Same other settings as User cluster]
+   ```
+
+#### Order Service Cluster
+3. **RDS Console** → Create database
+   ```
+   Settings:
+   DB cluster identifier: lugx-order-cluster
+   Master username: lugx_order_admin
+   Master password: [Generate secure password - SAVE THIS!]
+   Initial database name: lugx_order_db
+   
+   [Same other settings as User cluster]
+   ```
+
+### 3.3B Verify Separate Clusters
+
+Wait for all clusters to reach "Available" status:
+```bash
+# Check in AWS Console → RDS → Databases
+✅ lugx-user-cluster: Available
+✅ lugx-game-cluster: Available  
+✅ lugx-order-cluster: Available
+```
+
+### 3.4B Note Separate Database Endpoints
+```
+User Cluster: lugx-user-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
+Game Cluster: lugx-game-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
+Order Cluster: lugx-order-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com
+
+Connection Strings:
+- User Service: postgresql://lugx_user_admin:password@lugx-user-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
+- Game Service: postgresql://lugx_game_admin:password@lugx-game-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db
+- Order Service: postgresql://lugx_order_admin:password@lugx-order-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
+```
+
+---
+
+## 💰 Database Architecture Comparison
+
+### **Cost Analysis:**
+```
+Option A (Shared Cluster):
+- Serverless v2: ~$25-42/month
+- Total Infrastructure: ~$162-172/month
+- Savings: 60% vs separate clusters
+
+Option B (Separate Clusters):  
+- 3x Serverless v2: ~$75-105/month
+- Total Infrastructure: ~$212-242/month
+- Benefits: Maximum isolation & independent scaling
+```
+
+### **Choose Option A (Shared) If:**
+- ✅ Cost optimization is important
+- ✅ Services have similar scaling patterns
+- ✅ You want simplified management
+- ✅ Development/testing environment
+
+### **Choose Option B (Separate) If:**
+- ✅ Maximum service isolation required
+- ✅ Different scaling needs per service  
+- ✅ Independent maintenance windows needed
+- ✅ Production environment with strict SLAs
 
 ---
 
@@ -500,6 +650,8 @@ ANALYTICS_SERVICE_URL=http://10.0.10.x:3005
 JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
 
+### For Option A (Shared Cluster):
+
 #### User Service (.env)
 
 ```bash
@@ -508,7 +660,7 @@ PORT=3001
 HOST=0.0.0.0
 
 # Shared cluster with user-specific database
-DATABASE_URL=postgresql://lugx_user_service:secure_user_password@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
+DATABASE_URL=postgresql://lugx_user_service:SecureUserPass123!@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
 
 JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
@@ -521,7 +673,7 @@ PORT=3002
 HOST=0.0.0.0
 
 # Shared cluster with game-specific database
-DATABASE_URL=postgresql://lugx_game_service:secure_game_password@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db
+DATABASE_URL=postgresql://lugx_game_service:SecureGamePass123!@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db
 ```
 
 #### Order Service (.env)
@@ -532,7 +684,46 @@ PORT=3004
 HOST=0.0.0.0
 
 # Shared cluster with order-specific database
-DATABASE_URL=postgresql://lugx_order_service:secure_order_password@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
+DATABASE_URL=postgresql://lugx_order_service:SecureOrderPass123!@lugx-main-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
+
+JWT_SECRET=your-super-secret-jwt-key-change-this
+```
+
+### For Option B (Separate Clusters):
+
+#### User Service (.env)
+
+```bash
+NODE_ENV=production
+PORT=3001
+HOST=0.0.0.0
+
+# Dedicated user service cluster
+DATABASE_URL=postgresql://lugx_user_admin:your_user_password@lugx-user-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_user_db
+
+JWT_SECRET=your-super-secret-jwt-key-change-this
+```
+
+#### Game Service (.env)
+
+```bash
+NODE_ENV=production
+PORT=3002
+HOST=0.0.0.0
+
+# Dedicated game service cluster
+DATABASE_URL=postgresql://lugx_game_admin:your_game_password@lugx-game-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_game_db
+```
+
+#### Order Service (.env)
+
+```bash
+NODE_ENV=production
+PORT=3004
+HOST=0.0.0.0
+
+# Dedicated order service cluster
+DATABASE_URL=postgresql://lugx_order_admin:your_order_password@lugx-order-cluster.cluster-xxxxxxxxx.us-east-1.rds.amazonaws.com:5432/lugx_order_db
 
 JWT_SECRET=your-super-secret-jwt-key-change-this
 ```
@@ -682,7 +873,7 @@ curl http://your-alb-dns-name/api/games
 - [ ] Internet Gateway and NAT Gateway configured
 - [ ] Route tables properly set up
 - [ ] 4 Security groups configured
-- [ ] 1 Aurora PostgreSQL cluster with 3 databases running
+- [ ] Aurora PostgreSQL cluster(s) running (1 shared or 3 separate)
 - [ ] 5 EC2 instances launched
 - [ ] Application Load Balancer created
 - [ ] Target group configured and healthy
@@ -696,32 +887,64 @@ curl http://your-alb-dns-name/api/games
 
 ## 💰 Cost Estimation (Monthly)
 
+### **Option A: Shared Cluster Architecture**
 ```
-Aurora PostgreSQL (1 shared cluster): ~$42
-EC2 instances (5 × t3.small/medium): ~$85
-Application Load Balancer: ~$20
-NAT Gateway: ~$32
-Data Transfer: ~$10
-Total: ~$189/month (26% savings vs separate clusters)
-```
-
-## 💡 Cost Breakdown - Shared Cluster Benefits
-
-### **Single Cluster vs Multiple Clusters:**
-
-```
-Previous (3 clusters): 3 × db.t4g.medium = ~$110/month
-New (1 shared cluster): 1 × db.t4g.large = ~$42/month
-Savings: $68/month (62% database cost reduction)
+Aurora Serverless v2 (1 shared cluster): ~$25-42/month
+EC2 instances (5 × t3.small/medium): ~$85/month
+Application Load Balancer: ~$20/month
+NAT Gateway: ~$32/month
+Data Transfer: ~$10/month
+Total: ~$172-189/month
 ```
 
-### **Why Shared Cluster is Cost-Effective:**
+### **Option B: Separate Clusters Architecture**
+```
+Aurora Serverless v2 (3 separate clusters): ~$75-105/month
+EC2 instances (5 × t3.small/medium): ~$85/month
+Application Load Balancer: ~$20/month
+NAT Gateway: ~$32/month
+Data Transfer: ~$10/month
+Total: ~$222-252/month
+```
 
-- **Single instance** serving multiple databases
-- **Shared resources** (CPU, memory, I/O)
-- **One backup** instead of three
-- **One monitoring** setup instead of three
-- **Simplified management** and maintenance
+## 💡 Cost Comparison Analysis
+
+### **Database Cost Breakdown:**
+```
+Shared Cluster (Option A):
+- 1x Aurora Serverless v2: ~$25-42/month
+- Shared ACU scaling: 0.5-4.0 ACUs
+- Cost per ACU: ~$0.12/hour
+
+Separate Clusters (Option B):
+- 3x Aurora Serverless v2: ~$75-105/month  
+- Individual ACU scaling: 0.5-2.0 ACUs each
+- Better isolation but higher base cost
+```
+
+### **Monthly Savings Comparison:**
+```
+Shared vs Separate Clusters:
+Database savings: $50-63/month (67% reduction)
+Total infrastructure savings: $50-63/month (29% reduction)
+Annual savings: $600-756/year
+```
+
+### **Why Choose Each Option:**
+
+#### **Shared Cluster Benefits:**
+- ✅ **67% database cost savings**
+- ✅ **Single cluster management**
+- ✅ **Simplified monitoring**
+- ✅ **Unified backup strategy**
+- ✅ **Cost-effective for development**
+
+#### **Separate Clusters Benefits:**
+- ✅ **Complete service isolation**
+- ✅ **Independent scaling per service**
+- ✅ **Service-specific backup windows**
+- ✅ **Better for production SLAs**
+- ✅ **Fault isolation between services**
 
 ## 🎉 Success!
 
