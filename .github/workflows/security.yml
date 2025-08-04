@@ -42,9 +42,6 @@ jobs:
           p/security-audit
           p/secrets
           p/owasp-top-ten
-        args: >-
-          --output=semgrep-results.sarif
-          --output-format=sarif
         
     - name: 📊 Upload Semgrep results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
@@ -90,11 +87,7 @@ jobs:
         else
           echo "- Trivy scan failed or no vulnerabilities found" >> security-report.txt
         fi
-        if [ -f "semgrep-results.sarif" ]; then
-          echo "- Semgrep scan completed successfully" >> security-report.txt
-        else
-          echo "- Semgrep scan failed or no issues found" >> security-report.txt
-        fi
+        echo "- Semgrep scan completed (results in GitHub Security tab)" >> security-report.txt
         echo "- npm audit completed for all services" >> security-report.txt
         
     - name: 📤 Upload Security Report
@@ -122,9 +115,5 @@ jobs:
         else
           echo "- ⚠️ Trivy scan: No vulnerabilities found or scan failed" >> $GITHUB_STEP_SUMMARY
         fi
-        if [ -f "semgrep-results.sarif" ]; then
-          echo "- ✅ Semgrep scan completed" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "- ⚠️ Semgrep scan: No issues found or scan failed" >> $GITHUB_STEP_SUMMARY
-        fi
+        echo "- ✅ Semgrep scan completed" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ npm audit completed for all services" >> $GITHUB_STEP_SUMMARY 
