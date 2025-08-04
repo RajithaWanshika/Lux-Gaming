@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  security-events: write
+
 env:
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: lux-gaming-cluster
@@ -68,6 +72,9 @@ jobs:
     name: Create AWS Infrastructure
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
     - name: Checkout code
@@ -130,6 +137,9 @@ jobs:
     needs: [test, create-infrastructure]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
     - name: Checkout code
@@ -181,6 +191,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
     - name: Checkout code
@@ -253,6 +266,9 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
     - name: Checkout code
@@ -301,6 +317,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
     
     steps:
     - name: Checkout code
