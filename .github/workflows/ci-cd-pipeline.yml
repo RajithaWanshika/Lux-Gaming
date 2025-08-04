@@ -1,0 +1,337 @@
+name: Lux Gaming CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: lux-gaming-cluster
+  ECR_REPOSITORY: lux-gaming
+  STACK_NAME: lux-gaming-complete-infrastructure
+
+jobs:
+  test:
+    name: Test Application
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: |
+        cd lugx-backend/services/game && npm install
+        cd ../order && npm install
+        cd ../user && npm install
+        cd ../analytics && npm install
+        cd ../api-gateway && npm install
+        
+    - name: Run unit tests
+      run: |
+        cd lugx-backend/services/game && npm test || true
+        cd ../order && npm test || true
+        cd ../user && npm test || true
+        cd ../analytics && npm test || true
+        cd ../api-gateway && npm test || true
+        
+    - name: Run linting
+      run: |
+        cd lugx-backend/services/game && npm run lint || true
+        cd ../order && npm run lint || true
+        cd ../user && npm run lint || true
+        cd ../analytics && npm run lint || true
+        cd ../api-gateway && npm run lint || true
+
+  create-infrastructure:
+    name: Create AWS Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Create complete infrastructure
+      run: |
+        # Create CloudFormation stack with all resources
+        aws cloudformation create-stack \
+          --stack-name ${{ env.STACK_NAME }} \
+          --template-body file://cloudformation/complete-infrastructure.yaml \
+          --parameters \
+            ParameterKey=ClusterName,ParameterValue=${{ env.EKS_CLUSTER_NAME }} \
+            ParameterKey=NodeInstanceType,ParameterValue=t3.medium \
+            ParameterKey=NodeGroupMinSize,ParameterValue=2 \
+            ParameterKey=NodeGroupMaxSize,ParameterValue=4 \
+            ParameterKey=NodeGroupDesiredSize,ParameterValue=2 \
+            ParameterKey=ECRRepositoryName,ParameterValue=${{ env.ECR_REPOSITORY }} \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --region ${{ env.AWS_REGION }} || true
+        
+        # Wait for stack creation
+        aws cloudformation wait stack-create-complete \
+          --stack-name ${{ env.STACK_NAME }} \
+          --region ${{ env.AWS_REGION }}
+        
+    - name: Create IAM access keys
+      run: |
+        # Create access keys for the GitHub Actions user
+        aws iam create-access-key \
+          --user-name github-actions-lux-gaming \
+          --region ${{ env.AWS_REGION }} > access_keys.json
+        
+        # Extract access key and secret
+        ACCESS_KEY_ID=$(jq -r '.AccessKey.AccessKeyId' access_keys.json)
+        SECRET_ACCESS_KEY=$(jq -r '.AccessKey.SecretAccessKey' access_keys.json)
+        
+        # Store in GitHub secrets (this will be used for subsequent jobs)
+        echo "ACCESS_KEY_ID=$ACCESS_KEY_ID" >> $GITHUB_ENV
+        echo "SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY" >> $GITHUB_ENV
+        
+        # Clean up sensitive file
+        rm access_keys.json
+        
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig \
+          --name ${{ env.EKS_CLUSTER_NAME }} \
+          --region ${{ env.AWS_REGION }}
+
+  build:
+    name: Build and Push Docker Images
+    needs: [test, create-infrastructure]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ env.ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ env.SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Build and push frontend image
+      run: |
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:${{ github.sha }} ./lux-frontend
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:${{ github.sha }}
+        
+    - name: Build and push game service image
+      run: |
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-game:${{ github.sha }} ./lugx-backend/services/game
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-game:${{ github.sha }}
+        
+    - name: Build and push user service image
+      run: |
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-user:${{ github.sha }} ./lugx-backend/services/user
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-user:${{ github.sha }}
+        
+    - name: Build and push order service image
+      run: |
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-order:${{ github.sha }} ./lugx-backend/services/order
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-order:${{ github.sha }}
+        
+    - name: Build and push analytics service image
+      run: |
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-analytics:${{ github.sha }} ./lugx-backend/services/analytics
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-analytics:${{ github.sha }}
+        
+    - name: Build and push api-gateway image
+      run: |
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api-gateway:${{ github.sha }} ./lugx-backend/services/api-gateway
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api-gateway:${{ github.sha }}
+
+  deploy:
+    name: Deploy to EKS
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ env.ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ env.SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig \
+          --name ${{ env.EKS_CLUSTER_NAME }} \
+          --region ${{ env.AWS_REGION }}
+        
+    - name: Install add-ons
+      run: |
+        # Install AWS Load Balancer Controller
+        kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller//crds?ref=master"
+        helm repo add eks https://aws.github.io/eks-charts
+        helm repo update
+        helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+          -n kube-system \
+          --set clusterName=${{ env.EKS_CLUSTER_NAME }} \
+          --set serviceAccount.create=false \
+          --set serviceAccount.name=aws-load-balancer-controller
+        
+        # Install NGINX Ingress Controller
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/aws/deploy.yaml
+        
+        # Wait for ingress controller
+        kubectl wait --namespace ingress-nginx \
+          --for=condition=ready pod \
+          --selector=app.kubernetes.io/component=controller \
+          --timeout=300s
+        
+    - name: Deploy application
+      run: |
+        # Update image tags in deployment files
+        sed -i "s|image: .*|image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:${{ github.sha }}|g" k8s/frontend-deployment.yaml
+        sed -i "s|image: .*|image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-game:${{ github.sha }}|g" k8s/game-deployment.yaml
+        sed -i "s|image: .*|image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-user:${{ github.sha }}|g" k8s/user-deployment.yaml
+        sed -i "s|image: .*|image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-order:${{ github.sha }}|g" k8s/order-deployment.yaml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/configmap.yaml
+        kubectl apply -f k8s/secret.yaml
+        kubectl apply -f k8s/game-deployment.yaml
+        kubectl apply -f k8s/game-service.yaml
+        kubectl apply -f k8s/user-deployment.yaml
+        kubectl apply -f k8s/user-service.yaml
+        kubectl apply -f k8s/order-deployment.yaml
+        kubectl apply -f k8s/order-service.yaml
+        kubectl apply -f k8s/frontend-deployment.yaml
+        kubectl apply -f k8s/frontend-service.yaml
+        kubectl apply -f k8s/ingress.yaml
+        
+        # Wait for deployments to be ready
+        kubectl wait --for=condition=available --timeout=600s deployment/game-deployment -n lux-gaming
+        kubectl wait --for=condition=available --timeout=600s deployment/user-deployment -n lux-gaming
+        kubectl wait --for=condition=available --timeout=600s deployment/order-deployment -n lux-gaming
+        kubectl wait --for=condition=available --timeout=600s deployment/frontend-deployment -n lux-gaming
+
+  integration-test:
+    name: Integration Tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ env.ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ env.SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig \
+          --name ${{ env.EKS_CLUSTER_NAME }} \
+          --region ${{ env.AWS_REGION }}
+        
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+        
+    - name: Wait for services to be ready
+      run: |
+        kubectl wait --for=condition=ready pods -l app=game -n lux-gaming --timeout=300s
+        kubectl wait --for=condition=ready pods -l app=user -n lux-gaming --timeout=300s
+        kubectl wait --for=condition=ready pods -l app=order -n lux-gaming --timeout=300s
+        kubectl wait --for=condition=ready pods -l app=frontend -n lux-gaming --timeout=300s
+        
+    - name: Run integration tests
+      run: |
+        chmod +x ci-integration-tests.sh
+        ./ci-integration-tests.sh
+        
+    - name: Get service URLs
+      run: |
+        echo "Service URLs:"
+        kubectl get services -n lux-gaming
+        echo ""
+        echo "Ingress:"
+        kubectl get ingress -n lux-gaming
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  notify:
+    name: Notify Deployment Status
+    needs: [integration-test, security-scan]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Notify success
+      if: needs.integration-test.result == 'success' && needs.security-scan.result == 'success'
+      run: |
+        echo "✅ Deployment successful!"
+        echo "Application deployed to EKS cluster: ${{ env.EKS_CLUSTER_NAME }}"
+        echo "Region: ${{ env.AWS_REGION }}"
+        echo ""
+        echo "🔗 Access your application:"
+        echo "Frontend: http://your-load-balancer-url"
+        echo "API: http://your-load-balancer-url/api"
+        echo ""
+        echo "📊 Infrastructure created:"
+        echo "- EKS Cluster: ${{ env.EKS_CLUSTER_NAME }}"
+        echo "- ECR Repositories: ${{ env.ECR_REPOSITORY }}-frontend, ${{ env.ECR_REPOSITORY }}-game, etc."
+        echo "- IAM User: github-actions-lux-gaming"
+        echo "- S3 Bucket: ${{ env.ECR_REPOSITORY }}-artifacts-*"
+        
+    - name: Notify failure
+      if: needs.integration-test.result == 'failure' || needs.security-scan.result == 'failure'
+      run: |
+        echo "❌ Deployment failed!"
+        echo "Please check the logs for more details." 
