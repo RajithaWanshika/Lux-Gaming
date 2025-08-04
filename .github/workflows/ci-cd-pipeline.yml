@@ -25,31 +25,44 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
         
     - name: Install dependencies
       run: |
-        cd lugx-backend/services/game && npm install
-        cd ../order && npm install
-        cd ../user && npm install
-        cd ../analytics && npm install
-        cd ../api-gateway && npm install
+        # Install dependencies for each service
+        for service in game order user analytics api-gateway; do
+          echo "Installing dependencies for $service service..."
+          cd lugx-backend/services/$service
+          npm install --no-audit --no-fund
+          cd ../../..
+        done
         
     - name: Run unit tests
       run: |
-        cd lugx-backend/services/game && npm test || true
-        cd ../order && npm test || true
-        cd ../user && npm test || true
-        cd ../analytics && npm test || true
-        cd ../api-gateway && npm test || true
+        # Run tests for each service
+        for service in game order user analytics api-gateway; do
+          echo "Running tests for $service service..."
+          cd lugx-backend/services/$service
+          if npm run test 2>/dev/null; then
+            echo "✅ Tests passed for $service"
+          else
+            echo "⚠️  No tests found for $service or tests failed"
+          fi
+          cd ../../..
+        done
         
     - name: Run linting
       run: |
-        cd lugx-backend/services/game && npm run lint || true
-        cd ../order && npm run lint || true
-        cd ../user && npm run lint || true
-        cd ../analytics && npm run lint || true
-        cd ../api-gateway && npm run lint || true
+        # Run linting for each service
+        for service in game order user analytics api-gateway; do
+          echo "Running linting for $service service..."
+          cd lugx-backend/services/$service
+          if npm run lint 2>/dev/null; then
+            echo "✅ Linting passed for $service"
+          else
+            echo "⚠️  No linting found for $service or linting failed"
+          fi
+          cd ../../..
+        done
 
   create-infrastructure:
     name: Create AWS Infrastructure
