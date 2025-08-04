@@ -67,9 +67,22 @@ jobs:
         
     - name: 🔍 Run npm audit
       run: |
-        cd lugx-backend/services/user && npm audit --audit-level moderate || true
-        cd ../game && npm audit --audit-level moderate || true
-        cd ../order && npm audit --audit-level moderate || true
+        echo "Running npm audit for all services..."
+        
+        # Audit user service dependencies
+        cd lugx-backend/services/user
+        npm audit --audit-level moderate || true
+        cd ../..
+        
+        # Audit game service dependencies
+        cd lugx-backend/services/game
+        npm audit --audit-level moderate || true
+        cd ../..
+        
+        # Audit order service dependencies
+        cd lugx-backend/services/order
+        npm audit --audit-level moderate || true
+        cd ../..
         
     - name: ✅ Security Summary
       if: always()

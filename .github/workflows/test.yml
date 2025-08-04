@@ -21,13 +21,25 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
         
     - name: 📦 Install dependencies
       run: |
-        cd lugx-backend/services/user && npm install
-        cd ../game && npm install
-        cd ../order && npm install
+        echo "Installing dependencies for all services..."
+        
+        # Install user service dependencies
+        cd lugx-backend/services/user
+        npm ci || npm install
+        cd ../..
+        
+        # Install game service dependencies
+        cd lugx-backend/services/game
+        npm ci || npm install
+        cd ../..
+        
+        # Install order service dependencies
+        cd lugx-backend/services/order
+        npm ci || npm install
+        cd ../..
         
     - name: 🧪 Run tests
       run: |
@@ -36,14 +48,17 @@ jobs:
         # Test user service
         cd lugx-backend/services/user
         npm test || echo "User service tests failed"
+        cd ../..
         
         # Test game service
-        cd ../game
+        cd lugx-backend/services/game
         npm test || echo "Game service tests failed"
+        cd ../..
         
         # Test order service
-        cd ../order
+        cd lugx-backend/services/order
         npm test || echo "Order service tests failed"
+        cd ../..
         
     - name: 🔍 Lint code
       run: |
@@ -52,14 +67,17 @@ jobs:
         # Lint user service
         cd lugx-backend/services/user
         npm run lint || echo "User service linting failed"
+        cd ../..
         
         # Lint game service
-        cd ../game
+        cd lugx-backend/services/game
         npm run lint || echo "Game service linting failed"
+        cd ../..
         
         # Lint order service
-        cd ../order
+        cd lugx-backend/services/order
         npm run lint || echo "Order service linting failed"
+        cd ../..
         
     - name: 🐳 Build Docker images (without pushing)
       uses: docker/setup-buildx-action@v3
