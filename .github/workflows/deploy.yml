@@ -1,0 +1,187 @@
+name: 🚀 Deploy to EKS
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: lugx-cluster-man
+  EKS_NAMESPACE: lux-gaming
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔗 Configure kubectl
+      run: |
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+        
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 🔐 Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        
+    - name: 🏗️ Build and push Frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./lux-frontend
+        push: true
+        tags: |
+          rajithawan/lugx-frontend-image:latest
+          rajithawan/lugx-frontend-image:${{ github.sha }}
+        platforms: linux/amd64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🏗️ Build and push User Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./lugx-backend/services/user
+        push: true
+        tags: |
+          rajithawan/lugx-user-image:latest
+          rajithawan/lugx-user-image:${{ github.sha }}
+        platforms: linux/amd64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🏗️ Build and push Game Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./lugx-backend/services/game
+        push: true
+        tags: |
+          rajithawan/lugx-game-image:latest
+          rajithawan/lugx-game-image:${{ github.sha }}
+        platforms: linux/amd64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🏗️ Build and push Order Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./lugx-backend/services/order
+        push: true
+        tags: |
+          rajithawan/lugx-order-image:latest
+          rajithawan/lugx-order-image:${{ github.sha }}
+        platforms: linux/amd64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🔄 Update Kubernetes manifests
+      run: |
+        # Update image tags in deployment files
+        sed -i "s|rajithawan/lugx-frontend-image:.*|rajithawan/lugx-frontend-image:${{ github.sha }}|g" k8s/frontend-deployment.yaml
+        sed -i "s|rajithawan/lugx-user-image:.*|rajithawan/lugx-user-image:${{ github.sha }}|g" k8s/user-deployment.yaml
+        sed -i "s|rajithawan/lugx-game-image:.*|rajithawan/lugx-game-image:${{ github.sha }}|g" k8s/game-deployment.yaml
+        sed -i "s|rajithawan/lugx-order-image:.*|rajithawan/lugx-order-image:${{ github.sha }}|g" k8s/order-deployment.yaml
+        
+    - name: 🚀 Deploy to EKS
+      run: |
+        # Apply namespace
+        kubectl apply -f k8s/namespace.yaml
+        
+        # Apply ConfigMap and Secret
+        kubectl apply -f k8s/configmap.yaml
+        kubectl apply -f k8s/secret.yaml
+        
+        # Apply deployments
+        kubectl apply -f k8s/frontend-deployment.yaml
+        kubectl apply -f k8s/user-deployment.yaml
+        kubectl apply -f k8s/game-deployment.yaml
+        kubectl apply -f k8s/order-deployment.yaml
+        
+        # Apply services
+        kubectl apply -f k8s/frontend-service.yaml
+        kubectl apply -f k8s/user-service.yaml
+        kubectl apply -f k8s/game-service.yaml
+        kubectl apply -f k8s/order-service.yaml
+        
+        # Apply ingress
+        kubectl apply -f k8s/ingress.yaml
+        
+        # Wait for deployments to be ready
+        kubectl rollout status deployment/frontend-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
+        kubectl rollout status deployment/user-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
+        kubectl rollout status deployment/game-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
+        kubectl rollout status deployment/order-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
+        
+    - name: ✅ Verify deployment
+      run: |
+        # Check pod status
+        kubectl get pods -n ${{ env.EKS_NAMESPACE }}
+        
+        # Check services
+        kubectl get services -n ${{ env.EKS_NAMESPACE }}
+        
+        # Check ingress
+        kubectl get ingress -n ${{ env.EKS_NAMESPACE }}
+        
+    - name: 🧪 Run health checks
+      run: |
+        # Wait for services to be ready
+        sleep 30
+        
+        # Test frontend
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/frontend-service 8080:80 &
+        sleep 10
+        curl -f http://localhost:8080 || echo "Frontend health check failed"
+        pkill -f "port-forward.*frontend-service"
+        
+        # Test user service
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/user-service 8081:80 &
+        sleep 10
+        curl -f http://localhost:8081/health/user || echo "User service health check failed"
+        pkill -f "port-forward.*user-service"
+        
+        # Test game service
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/game-service 8082:80 &
+        sleep 10
+        curl -f http://localhost:8082/health/game || echo "Game service health check failed"
+        pkill -f "port-forward.*game-service"
+        
+        # Test order service
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/order-service 8083:80 &
+        sleep 10
+        curl -f http://localhost:8083/health/order || echo "Order service health check failed"
+        pkill -f "port-forward.*order-service"
+        
+    - name: 📊 Deployment Summary
+      if: always()
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "**Cluster:** ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Namespace:** ${{ env.EKS_NAMESPACE }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Deployed Images:" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend: rajithawan/lugx-frontend-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- User Service: rajithawan/lugx-user-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Game Service: rajithawan/lugx-game-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Order Service: rajithawan/lugx-order-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY 

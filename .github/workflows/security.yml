@@ -1,0 +1,86 @@
+name: 🔒 Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Every Monday at 2 AM
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: 🔍 Run Trivy container scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'image'
+        scan-ref: 'rajithawan/lugx-frontend-image:latest'
+        format: 'sarif'
+        output: 'trivy-container-results.sarif'
+        
+    - name: 📊 Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        
+    - name: 📊 Upload Trivy container scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-container-results.sarif'
+        
+    - name: 🔍 Run Bandit security linter
+      uses: python-security/bandit@main
+      with:
+        args: . -r -f json -o bandit-report.json || true
+        
+    - name: 🔍 Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/owasp-top-ten
+        output-format: sarif
+        output-file: semgrep-results.sarif
+        
+    - name: 📊 Upload Semgrep results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'semgrep-results.sarif'
+        
+    - name: 🔍 Run npm audit
+      run: |
+        cd lugx-backend/services/user && npm audit --audit-level moderate || true
+        cd ../game && npm audit --audit-level moderate || true
+        cd ../order && npm audit --audit-level moderate || true
+        
+    - name: ✅ Security Summary
+      if: always()
+      run: |
+        echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔍 Security Scans Completed:" >> $GITHUB_STEP_SUMMARY
+        echo "- Trivy vulnerability scanner" >> $GITHUB_STEP_SUMMARY
+        echo "- Trivy container scanner" >> $GITHUB_STEP_SUMMARY
+        echo "- Bandit security linter" >> $GITHUB_STEP_SUMMARY
+        echo "- Semgrep static analysis" >> $GITHUB_STEP_SUMMARY
+        echo "- npm audit for dependencies" >> $GITHUB_STEP_SUMMARY 

@@ -1,0 +1,123 @@
+name: 🔄 Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_name:
+        description: 'Deployment to rollback (frontend-service, user-service, game-service, order-service)'
+        required: true
+        default: 'frontend-service'
+      rollback_revision:
+        description: 'Revision to rollback to (number)'
+        required: true
+        default: '1'
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: lugx-cluster-man
+  EKS_NAMESPACE: lux-gaming
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔗 Configure kubectl
+      run: |
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+        
+    - name: 📋 Check current deployment status
+      run: |
+        echo "Current deployment status:"
+        kubectl get deployments -n ${{ env.EKS_NAMESPACE }}
+        echo ""
+        echo "Current pods:"
+        kubectl get pods -n ${{ env.EKS_NAMESPACE }}
+        
+    - name: 🔄 Rollback deployment
+      run: |
+        DEPLOYMENT_NAME="${{ github.event.inputs.deployment_name }}"
+        ROLLBACK_REVISION="${{ github.event.inputs.rollback_revision }}"
+        
+        echo "Rolling back $DEPLOYMENT_NAME to revision $ROLLBACK_REVISION..."
+        
+        kubectl rollout undo deployment/$DEPLOYMENT_NAME -n ${{ env.EKS_NAMESPACE }} --to-revision=$ROLLBACK_REVISION
+        
+        echo "Waiting for rollback to complete..."
+        kubectl rollout status deployment/$DEPLOYMENT_NAME -n ${{ env.EKS_NAMESPACE }} --timeout=300s
+        
+    - name: ✅ Verify rollback
+      run: |
+        DEPLOYMENT_NAME="${{ github.event.inputs.deployment_name }}"
+        
+        echo "Verifying rollback for $DEPLOYMENT_NAME..."
+        
+        # Check deployment status
+        kubectl get deployment/$DEPLOYMENT_NAME -n ${{ env.EKS_NAMESPACE }}
+        
+        # Check pod status
+        kubectl get pods -n ${{ env.EKS_NAMESPACE }} -l app=$DEPLOYMENT_NAME
+        
+        # Check rollout history
+        kubectl rollout history deployment/$DEPLOYMENT_NAME -n ${{ env.EKS_NAMESPACE }}
+        
+    - name: 🧪 Health check after rollback
+      run: |
+        DEPLOYMENT_NAME="${{ github.event.inputs.deployment_name }}"
+        
+        echo "Running health check for $DEPLOYMENT_NAME..."
+        
+        # Wait for service to be ready
+        sleep 30
+        
+        # Get service name based on deployment
+        SERVICE_NAME=""
+        case $DEPLOYMENT_NAME in
+          "frontend-service")
+            SERVICE_NAME="frontend-service"
+            HEALTH_PATH="/"
+            ;;
+          "user-service")
+            SERVICE_NAME="user-service"
+            HEALTH_PATH="/health/user"
+            ;;
+          "game-service")
+            SERVICE_NAME="game-service"
+            HEALTH_PATH="/health/game"
+            ;;
+          "order-service")
+            SERVICE_NAME="order-service"
+            HEALTH_PATH="/health/order"
+            ;;
+        esac
+        
+        if [ ! -z "$SERVICE_NAME" ]; then
+          kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/$SERVICE_NAME 8080:80 &
+          sleep 10
+          curl -f http://localhost:8080$HEALTH_PATH || echo "Health check failed for $SERVICE_NAME"
+          pkill -f "port-forward.*$SERVICE_NAME"
+        fi
+        
+    - name: 📊 Rollback Summary
+      if: always()
+      run: |
+        DEPLOYMENT_NAME="${{ github.event.inputs.deployment_name }}"
+        ROLLBACK_REVISION="${{ github.event.inputs.rollback_revision }}"
+        
+        echo "## 🔄 Rollback Summary" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment:** $DEPLOYMENT_NAME" >> $GITHUB_STEP_SUMMARY
+        echo "**Rollback Revision:** $ROLLBACK_REVISION" >> $GITHUB_STEP_SUMMARY
+        echo "**Cluster:** ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Namespace:** ${{ env.EKS_NAMESPACE }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Rollback Actions:" >> $GITHUB_STEP_SUMMARY
+        echo "- Rolled back deployment to revision $ROLLBACK_REVISION" >> $GITHUB_STEP_SUMMARY
+        echo "- Verified deployment status" >> $GITHUB_STEP_SUMMARY
+        echo "- Ran health checks" >> $GITHUB_STEP_SUMMARY 

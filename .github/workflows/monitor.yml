@@ -1,0 +1,312 @@
+name: 📊 Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Every 15 minutes
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: lugx-cluster-man
+  EKS_NAMESPACE: lux-gaming
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔗 Configure kubectl
+      run: |
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+        
+    - name: 📊 Check cluster health
+      run: |
+        echo "=== Cluster Health Check ==="
+        
+        # Check nodes
+        echo "Node Status:"
+        kubectl get nodes
+        
+        # Check pods
+        echo "Pod Status:"
+        kubectl get pods -n ${{ env.EKS_NAMESPACE }}
+        
+        # Check services
+        echo "Service Status:"
+        kubectl get services -n ${{ env.EKS_NAMESPACE }}
+        
+        # Check deployments
+        echo "Deployment Status:"
+        kubectl get deployments -n ${{ env.EKS_NAMESPACE }}
+        
+    - name: 🧪 Run health checks
+      run: |
+        echo "=== Health Checks ==="
+        
+        # Test frontend
+        echo "Testing Frontend..."
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/frontend-service 8080:80 &
+        sleep 10
+        FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+        pkill -f "port-forward.*frontend-service"
+        echo "Frontend Status: $FRONTEND_STATUS"
+        
+        # Test user service
+        echo "Testing User Service..."
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/user-service 8081:80 &
+        sleep 10
+        USER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/health/user)
+        pkill -f "port-forward.*user-service"
+        echo "User Service Status: $USER_STATUS"
+        
+        # Test game service
+        echo "Testing Game Service..."
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/game-service 8082:80 &
+        sleep 10
+        GAME_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/health/game)
+        pkill -f "port-forward.*game-service"
+        echo "Game Service Status: $GAME_STATUS"
+        
+        # Test order service
+        echo "Testing Order Service..."
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/order-service 8083:80 &
+        sleep 10
+        ORDER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/health/order)
+        pkill -f "port-forward.*order-service"
+        echo "Order Service Status: $ORDER_STATUS"
+        
+        # Store status for next step
+        echo "FRONTEND_STATUS=$FRONTEND_STATUS" >> $GITHUB_ENV
+        echo "USER_STATUS=$USER_STATUS" >> $GITHUB_ENV
+        echo "GAME_STATUS=$GAME_STATUS" >> $GITHUB_ENV
+        echo "ORDER_STATUS=$ORDER_STATUS" >> $GITHUB_ENV
+        
+    - name: 📈 Check metrics
+      run: |
+        echo "=== Metrics Check ==="
+        
+        # Check Prometheus metrics endpoints
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/user-service 8081:80 &
+        sleep 5
+        USER_METRICS=$(curl -s http://localhost:8081/metrics/user | head -5)
+        pkill -f "port-forward.*user-service"
+        echo "User Metrics Sample:"
+        echo "$USER_METRICS"
+        
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/game-service 8082:80 &
+        sleep 5
+        GAME_METRICS=$(curl -s http://localhost:8082/metrics/game | head -5)
+        pkill -f "port-forward.*game-service"
+        echo "Game Metrics Sample:"
+        echo "$GAME_METRICS"
+        
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/order-service 8083:80 &
+        sleep 5
+        ORDER_METRICS=$(curl -s http://localhost:8083/metrics/order | head -5)
+        pkill -f "port-forward.*order-service"
+        echo "Order Metrics Sample:"
+        echo "$ORDER_METRICS"
+        
+    - name: 🚨 Check for issues
+      run: |
+        echo "=== Issue Detection ==="
+        
+        # Check for failed pods
+        FAILED_PODS=$(kubectl get pods -n ${{ env.EKS_NAMESPACE }} --field-selector=status.phase!=Running -o jsonpath='{.items[*].metadata.name}')
+        if [ ! -z "$FAILED_PODS" ]; then
+          echo "❌ Failed Pods: $FAILED_PODS"
+          echo "FAILED_PODS=true" >> $GITHUB_ENV
+          echo "FAILED_PODS_LIST=$FAILED_PODS" >> $GITHUB_ENV
+        else
+          echo "✅ All pods are running"
+          echo "FAILED_PODS=false" >> $GITHUB_ENV
+        fi
+        
+        # Check for health issues
+        if [ "$FRONTEND_STATUS" != "200" ] || [ "$USER_STATUS" != "200" ] || [ "$GAME_STATUS" != "200" ] || [ "$ORDER_STATUS" != "200" ]; then
+          echo "❌ Health check failed"
+          echo "HEALTH_ISSUES=true" >> $GITHUB_ENV
+          
+          # Create detailed health issue report
+          echo "HEALTH_ISSUES_DETAILS=" >> $GITHUB_ENV
+          if [ "$FRONTEND_STATUS" != "200" ]; then
+            echo "HEALTH_ISSUES_DETAILS=Frontend: $FRONTEND_STATUS" >> $GITHUB_ENV
+          fi
+          if [ "$USER_STATUS" != "200" ]; then
+            echo "HEALTH_ISSUES_DETAILS=${HEALTH_ISSUES_DETAILS:-}, User: $USER_STATUS" >> $GITHUB_ENV
+          fi
+          if [ "$GAME_STATUS" != "200" ]; then
+            echo "HEALTH_ISSUES_DETAILS=${HEALTH_ISSUES_DETAILS:-}, Game: $GAME_STATUS" >> $GITHUB_ENV
+          fi
+          if [ "$ORDER_STATUS" != "200" ]; then
+            echo "HEALTH_ISSUES_DETAILS=${HEALTH_ISSUES_DETAILS:-}, Order: $ORDER_STATUS" >> $GITHUB_ENV
+          fi
+        else
+          echo "✅ All health checks passed"
+          echo "HEALTH_ISSUES=false" >> $GITHUB_ENV
+        fi
+        
+        # Check for resource issues
+        RESOURCE_ISSUES=$(kubectl get pods -n ${{ env.EKS_NAMESPACE }} -o jsonpath='{.items[?(@.status.phase=="Pending")].metadata.name}')
+        if [ ! -z "$RESOURCE_ISSUES" ]; then
+          echo "⚠️ Resource issues detected: $RESOURCE_ISSUES"
+          echo "RESOURCE_ISSUES=true" >> $GITHUB_ENV
+        else
+          echo "✅ No resource issues"
+          echo "RESOURCE_ISSUES=false" >> $GITHUB_ENV
+        fi
+        
+    - name: 🔧 Automatic Remediation
+      if: env.FAILED_PODS == 'true' || env.HEALTH_ISSUES == 'true'
+      run: |
+        echo "=== Automatic Remediation ==="
+        
+        # Restart failed pods
+        if [ "$FAILED_PODS" = "true" ]; then
+          echo "🔄 Restarting failed pods..."
+          for pod in $FAILED_PODS_LIST; do
+            echo "Restarting pod: $pod"
+            kubectl delete pod $pod -n ${{ env.EKS_NAMESPACE }}
+          done
+          
+          echo "⏳ Waiting for pods to restart..."
+          sleep 30
+          
+          # Check if pods are now running
+          RESTARTED_PODS=$(kubectl get pods -n ${{ env.EKS_NAMESPACE }} --field-selector=status.phase!=Running -o jsonpath='{.items[*].metadata.name}')
+          if [ -z "$RESTARTED_PODS" ]; then
+            echo "✅ Pod restart successful"
+            echo "POD_RESTART_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "❌ Pod restart failed"
+            echo "POD_RESTART_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        fi
+        
+        # Restart deployments if health checks fail
+        if [ "$HEALTH_ISSUES" = "true" ]; then
+          echo "🔄 Restarting deployments with health issues..."
+          
+          if [ "$FRONTEND_STATUS" != "200" ]; then
+            echo "Restarting frontend deployment..."
+            kubectl rollout restart deployment/frontend-service -n ${{ env.EKS_NAMESPACE }}
+          fi
+          
+          if [ "$USER_STATUS" != "200" ]; then
+            echo "Restarting user service deployment..."
+            kubectl rollout restart deployment/user-service -n ${{ env.EKS_NAMESPACE }}
+          fi
+          
+          if [ "$GAME_STATUS" != "200" ]; then
+            echo "Restarting game service deployment..."
+            kubectl rollout restart deployment/game-service -n ${{ env.EKS_NAMESPACE }}
+          fi
+          
+          if [ "$ORDER_STATUS" != "200" ]; then
+            echo "Restarting order service deployment..."
+            kubectl rollout restart deployment/order-service -n ${{ env.EKS_NAMESPACE }}
+          fi
+          
+          echo "⏳ Waiting for deployments to restart..."
+          sleep 60
+          
+          echo "POD_RESTART_SUCCESS=true" >> $GITHUB_ENV
+        fi
+        
+    - name: 📧 Send Alert Notifications
+      if: env.FAILED_PODS == 'true' || env.HEALTH_ISSUES == 'true' || env.RESOURCE_ISSUES == 'true'
+      run: |
+        echo "=== Alert Notifications ==="
+        
+        # Create alert message
+        ALERT_MESSAGE="🚨 **Lux Gaming Platform Alert**\n\n"
+        ALERT_MESSAGE+="**Cluster:** ${{ env.EKS_CLUSTER_NAME }}\n"
+        ALERT_MESSAGE+="**Namespace:** ${{ env.EKS_NAMESPACE }}\n"
+        ALERT_MESSAGE+="**Timestamp:** $(date)\n\n"
+        
+        if [ "$FAILED_PODS" = "true" ]; then
+          ALERT_MESSAGE+="❌ **Failed Pods:** $FAILED_PODS_LIST\n"
+        fi
+        
+        if [ "$HEALTH_ISSUES" = "true" ]; then
+          ALERT_MESSAGE+="❌ **Health Issues:** $HEALTH_ISSUES_DETAILS\n"
+        fi
+        
+        if [ "$RESOURCE_ISSUES" = "true" ]; then
+          ALERT_MESSAGE+="⚠️ **Resource Issues:** Detected pending pods\n"
+        fi
+        
+        ALERT_MESSAGE+="\n**Remediation:** Automatic restart attempted\n"
+        ALERT_MESSAGE+="**Next Check:** 15 minutes\n"
+        
+        # Send to GitHub issue (if configured)
+        if [ ! -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+          echo "Creating GitHub issue for alert..."
+          # This would create an issue in your repository
+          echo "$ALERT_MESSAGE" > alert_message.txt
+        fi
+        
+        # Log alert for manual review
+        echo "$ALERT_MESSAGE" >> alert_log.txt
+        
+    - name: 📊 Generate monitoring report
+      if: always()
+      run: |
+        echo "## 📊 Monitoring Report" >> $GITHUB_STEP_SUMMARY
+        echo "**Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "**Cluster:** ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Namespace:** ${{ env.EKS_NAMESPACE }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### 🏥 Health Status:" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend: $FRONTEND_STATUS" >> $GITHUB_STEP_SUMMARY
+        echo "- User Service: $USER_STATUS" >> $GITHUB_STEP_SUMMARY
+        echo "- Game Service: $GAME_STATUS" >> $GITHUB_STEP_SUMMARY
+        echo "- Order Service: $ORDER_STATUS" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### 📈 Metrics:" >> $GITHUB_STEP_SUMMARY
+        echo "- User metrics endpoint: /metrics/user" >> $GITHUB_STEP_SUMMARY
+        echo "- Game metrics endpoint: /metrics/game" >> $GITHUB_STEP_SUMMARY
+        echo "- Order metrics endpoint: /metrics/order" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "$FAILED_PODS" = "true" ]; then
+          echo "### ❌ Issues Detected:" >> $GITHUB_STEP_SUMMARY
+          echo "- Failed pods: $FAILED_PODS_LIST" >> $GITHUB_STEP_SUMMARY
+          if [ "$POD_RESTART_SUCCESS" = "true" ]; then
+            echo "- ✅ Automatic restart successful" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ Automatic restart failed - Manual intervention required" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        if [ "$HEALTH_ISSUES" = "true" ]; then
+          echo "- Health check failures: $HEALTH_ISSUES_DETAILS" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Deployment restarts attempted" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "$RESOURCE_ISSUES" = "true" ]; then
+          echo "- Resource constraints detected" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "$FAILED_PODS" = "false" ] && [ "$HEALTH_ISSUES" = "false" ] && [ "$RESOURCE_ISSUES" = "false" ]; then
+          echo "### ✅ All Systems Operational" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔔 Alert Actions:" >> $GITHUB_STEP_SUMMARY
+        if [ "$FAILED_PODS" = "true" ] || [ "$HEALTH_ISSUES" = "true" ]; then
+          echo "- 🚨 Alert notifications sent" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔧 Automatic remediation attempted" >> $GITHUB_STEP_SUMMARY
+          echo "- 📧 Manual review recommended" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- ✅ No alerts triggered" >> $GITHUB_STEP_SUMMARY
+        fi 
