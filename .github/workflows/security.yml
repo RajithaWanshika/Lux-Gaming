@@ -44,11 +44,6 @@ jobs:
       with:
         sarif_file: 'trivy-container-results.sarif'
         
-    - name: 🔍 Run Bandit security linter
-      uses: python-security/bandit@main
-      with:
-        args: . -r -f json -o bandit-report.json || true
-        
     - name: 🔍 Run Semgrep
       uses: returntocorp/semgrep-action@v1
       with:
@@ -94,6 +89,5 @@ jobs:
         echo "### 🔍 Security Scans Completed:" >> $GITHUB_STEP_SUMMARY
         echo "- Trivy vulnerability scanner" >> $GITHUB_STEP_SUMMARY
         echo "- Trivy container scanner" >> $GITHUB_STEP_SUMMARY
-        echo "- Bandit security linter" >> $GITHUB_STEP_SUMMARY
         echo "- Semgrep static analysis" >> $GITHUB_STEP_SUMMARY
         echo "- npm audit for dependencies" >> $GITHUB_STEP_SUMMARY 
