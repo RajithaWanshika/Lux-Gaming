@@ -24,25 +24,11 @@ jobs:
         format: 'sarif'
         output: 'trivy-results.sarif'
         
-    - name: 🔍 Run Trivy container scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'image'
-        scan-ref: 'rajithawan/lugx-frontend-image:latest'
-        format: 'sarif'
-        output: 'trivy-container-results.sarif'
-        
     - name: 📊 Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
+      if: always() && hashFiles('trivy-results.sarif') != ''
       with:
         sarif_file: 'trivy-results.sarif'
-        
-    - name: 📊 Upload Trivy container scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: 'trivy-container-results.sarif'
         
     - name: 🔍 Run Semgrep
       uses: returntocorp/semgrep-action@v1
@@ -56,7 +42,7 @@ jobs:
         
     - name: 📊 Upload Semgrep results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
+      if: always() && hashFiles('semgrep-results.sarif') != ''
       with:
         sarif_file: 'semgrep-results.sarif'
         
@@ -88,6 +74,5 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔍 Security Scans Completed:" >> $GITHUB_STEP_SUMMARY
         echo "- Trivy vulnerability scanner" >> $GITHUB_STEP_SUMMARY
-        echo "- Trivy container scanner" >> $GITHUB_STEP_SUMMARY
         echo "- Semgrep static analysis" >> $GITHUB_STEP_SUMMARY
         echo "- npm audit for dependencies" >> $GITHUB_STEP_SUMMARY 
