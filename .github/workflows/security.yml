@@ -31,7 +31,7 @@ jobs:
         
     - name: 📊 Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always() && hashFiles('trivy-results.sarif') != '' && github.event_name != 'pull_request'
+      if: always() && hashFiles('trivy-results.sarif') != ''
       with:
         sarif_file: 'trivy-results.sarif'
         
@@ -42,31 +42,60 @@ jobs:
           p/security-audit
           p/secrets
           p/owasp-top-ten
+        generateSarif: "1"
         
     - name: 📊 Upload Semgrep results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always() && hashFiles('semgrep-results.sarif') != '' && github.event_name != 'pull_request'
+      if: always() && hashFiles('semgrep.sarif') != ''
       with:
-        sarif_file: 'semgrep-results.sarif'
+        sarif_file: 'semgrep.sarif'
+        
+    - name: 🔧 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
         
     - name: 🔍 Run npm audit
       run: |
         echo "Running npm audit for all services..."
         
-        # Audit user service dependencies
-        cd lugx-backend/services/user
-        npm audit --audit-level moderate || echo "User service audit completed"
-        cd ../..
+        # Function to run audit safely
+        run_audit() {
+          local service_path=$1
+          local service_name=$2
+          
+          if [ -f "$service_path/package.json" ]; then
+            echo "Auditing $service_name..."
+            cd "$service_path"
+            
+            # Install dependencies first if node_modules doesn't exist
+            if [ ! -d "node_modules" ]; then
+              echo "Installing dependencies for $service_name..."
+              npm install --production --silent
+            fi
+            
+            # Run audit
+            npm audit --audit-level moderate --json > "../../../${service_name}-audit.json" 2>/dev/null || true
+            npm audit --audit-level moderate || echo "$service_name audit completed with issues"
+            
+            cd - > /dev/null
+          else
+            echo "No package.json found for $service_name at $service_path"
+          fi
+        }
         
-        # Audit game service dependencies
-        cd lugx-backend/services/game
-        npm audit --audit-level moderate || echo "Game service audit completed"
-        cd ../..
+        # Audit each service
+        run_audit "lugx-backend/services/user" "user"
+        run_audit "lugx-backend/services/game" "game" 
+        run_audit "lugx-backend/services/order" "order"
         
-        # Audit order service dependencies
-        cd lugx-backend/services/order
-        npm audit --audit-level moderate || echo "Order service audit completed"
-        cd ../..
+        # Check for frontend package.json too
+        if [ -f "package.json" ]; then
+          echo "Auditing root project..."
+          npm install --production --silent 2>/dev/null || true
+          npm audit --audit-level moderate --json > "root-audit.json" 2>/dev/null || true
+          npm audit --audit-level moderate || echo "Root project audit completed with issues"
+        fi
         
     - name: 📋 Generate Security Report
       if: always()
@@ -75,6 +104,7 @@ jobs:
         echo "**Date:** $(date)" >> security-report.txt
         echo "**Branch:** ${{ github.ref_name }}" >> security-report.txt
         echo "**Commit:** ${{ github.sha }}" >> security-report.txt
+        echo "**Workflow Run:** ${{ github.run_number }}" >> security-report.txt
         echo "" >> security-report.txt
         echo "### 🔍 Security Scans Completed:" >> security-report.txt
         echo "- Trivy vulnerability scanner" >> security-report.txt
@@ -82,20 +112,44 @@ jobs:
         echo "- npm audit for dependencies" >> security-report.txt
         echo "" >> security-report.txt
         echo "### 📊 Scan Results:" >> security-report.txt
+        
+        # Check Trivy results
         if [ -f "trivy-results.sarif" ]; then
-          echo "- Trivy scan completed successfully" >> security-report.txt
+          trivy_issues=$(jq '.runs[0].results | length' trivy-results.sarif 2>/dev/null || echo "0")
+          echo "- Trivy scan: $trivy_issues vulnerabilities found" >> security-report.txt
         else
-          echo "- Trivy scan failed or no vulnerabilities found" >> security-report.txt
+          echo "- Trivy scan: No SARIF file generated" >> security-report.txt
         fi
-        echo "- Semgrep scan completed (results in GitHub Security tab)" >> security-report.txt
-        echo "- npm audit completed for all services" >> security-report.txt
+        
+        # Check Semgrep results
+        if [ -f "semgrep.sarif" ]; then
+          semgrep_issues=$(jq '.runs[0].results | length' semgrep.sarif 2>/dev/null || echo "0")
+          echo "- Semgrep scan: $semgrep_issues issues found" >> security-report.txt
+        else
+          echo "- Semgrep scan: No SARIF file generated" >> security-report.txt
+        fi
+        
+        # Check npm audit results
+        echo "- npm audit results:" >> security-report.txt
+        for audit_file in *-audit.json; do
+          if [ -f "$audit_file" ]; then
+            service=$(basename "$audit_file" -audit.json)
+            vulnerabilities=$(jq '.metadata.vulnerabilities.total' "$audit_file" 2>/dev/null || echo "0")
+            echo "  - $service: $vulnerabilities vulnerabilities" >> security-report.txt
+          fi
+        done
         
     - name: 📤 Upload Security Report
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: security-report
-        path: security-report.txt
+        name: security-report-${{ github.run_number }}
+        path: |
+          security-report.txt
+          *-audit.json
+          trivy-results.sarif
+          semgrep.sarif
+        retention-days: 30
         
     - name: ✅ Security Summary
       if: always()
@@ -103,17 +157,54 @@ jobs:
         echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
         echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
         echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Run:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🔍 Security Scans Completed:" >> $GITHUB_STEP_SUMMARY
-        echo "- Trivy vulnerability scanner" >> $GITHUB_STEP_SUMMARY
-        echo "- Semgrep static analysis" >> $GITHUB_STEP_SUMMARY
-        echo "- npm audit for dependencies" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📋 Results:" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### 🔍 Security Scans:" >> $GITHUB_STEP_SUMMARY
+        
+        # Trivy results
         if [ -f "trivy-results.sarif" ]; then
-          echo "- ✅ Trivy scan completed" >> $GITHUB_STEP_SUMMARY
+          trivy_issues=$(jq '.runs[0].results | length' trivy-results.sarif 2>/dev/null || echo "0")
+          if [ "$trivy_issues" -eq 0 ]; then
+            echo "- ✅ Trivy: No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ Trivy: $trivy_issues vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          fi
         else
-          echo "- ⚠️ Trivy scan: No vulnerabilities found or scan failed" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Trivy: Scan failed or no results" >> $GITHUB_STEP_SUMMARY
         fi
-        echo "- ✅ Semgrep scan completed" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ npm audit completed for all services" >> $GITHUB_STEP_SUMMARY 
+        
+        # Semgrep results
+        if [ -f "semgrep.sarif" ]; then
+          semgrep_issues=$(jq '.runs[0].results | length' semgrep.sarif 2>/dev/null || echo "0")
+          if [ "$semgrep_issues" -eq 0 ]; then
+            echo "- ✅ Semgrep: No issues found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ Semgrep: $semgrep_issues issues found" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "- ❌ Semgrep: Scan failed or no results" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # npm audit results
+        echo "- npm audit:" >> $GITHUB_STEP_SUMMARY
+        total_vulns=0
+        for audit_file in *-audit.json; do
+          if [ -f "$audit_file" ]; then
+            service=$(basename "$audit_file" -audit.json)
+            vulnerabilities=$(jq '.metadata.vulnerabilities.total' "$audit_file" 2>/dev/null || echo "0")
+            total_vulns=$((total_vulns + vulnerabilities))
+            if [ "$vulnerabilities" -eq 0 ]; then
+              echo "  - ✅ $service: No vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "  - ⚠️ $service: $vulnerabilities vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "$total_vulns" -eq 0 ]; then
+          echo "🎉 **Overall Status: SECURE** - No vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Overall Status: REVIEW NEEDED** - $total_vulns total vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+        fi
