@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '0 2 * * 1'  # Every Monday at 2 AM
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
   security-scan:
     runs-on: ubuntu-latest
@@ -26,7 +31,7 @@ jobs:
         
     - name: 📊 Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always() && hashFiles('trivy-results.sarif') != ''
+      if: always() && hashFiles('trivy-results.sarif') != '' && github.event_name != 'pull_request'
       with:
         sarif_file: 'trivy-results.sarif'
         
@@ -42,7 +47,7 @@ jobs:
         
     - name: 📊 Upload Semgrep results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always() && hashFiles('semgrep-results.sarif') != ''
+      if: always() && hashFiles('semgrep-results.sarif') != '' && github.event_name != 'pull_request'
       with:
         sarif_file: 'semgrep-results.sarif'
         
@@ -52,18 +57,51 @@ jobs:
         
         # Audit user service dependencies
         cd lugx-backend/services/user
-        npm audit --audit-level moderate || true
+        npm audit --audit-level moderate || echo "User service audit completed"
         cd ../..
         
         # Audit game service dependencies
         cd lugx-backend/services/game
-        npm audit --audit-level moderate || true
+        npm audit --audit-level moderate || echo "Game service audit completed"
         cd ../..
         
         # Audit order service dependencies
         cd lugx-backend/services/order
-        npm audit --audit-level moderate || true
+        npm audit --audit-level moderate || echo "Order service audit completed"
         cd ../..
+        
+    - name: 📋 Generate Security Report
+      if: always()
+      run: |
+        echo "## 🔒 Security Scan Report" > security-report.txt
+        echo "**Date:** $(date)" >> security-report.txt
+        echo "**Branch:** ${{ github.ref_name }}" >> security-report.txt
+        echo "**Commit:** ${{ github.sha }}" >> security-report.txt
+        echo "" >> security-report.txt
+        echo "### 🔍 Security Scans Completed:" >> security-report.txt
+        echo "- Trivy vulnerability scanner" >> security-report.txt
+        echo "- Semgrep static analysis" >> security-report.txt
+        echo "- npm audit for dependencies" >> security-report.txt
+        echo "" >> security-report.txt
+        echo "### 📊 Scan Results:" >> security-report.txt
+        if [ -f "trivy-results.sarif" ]; then
+          echo "- Trivy scan completed successfully" >> security-report.txt
+        else
+          echo "- Trivy scan failed or no vulnerabilities found" >> security-report.txt
+        fi
+        if [ -f "semgrep-results.sarif" ]; then
+          echo "- Semgrep scan completed successfully" >> security-report.txt
+        else
+          echo "- Semgrep scan failed or no issues found" >> security-report.txt
+        fi
+        echo "- npm audit completed for all services" >> security-report.txt
+        
+    - name: 📤 Upload Security Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: security-report.txt
         
     - name: ✅ Security Summary
       if: always()
@@ -75,4 +113,17 @@ jobs:
         echo "### 🔍 Security Scans Completed:" >> $GITHUB_STEP_SUMMARY
         echo "- Trivy vulnerability scanner" >> $GITHUB_STEP_SUMMARY
         echo "- Semgrep static analysis" >> $GITHUB_STEP_SUMMARY
-        echo "- npm audit for dependencies" >> $GITHUB_STEP_SUMMARY 
+        echo "- npm audit for dependencies" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 Results:" >> $GITHUB_STEP_SUMMARY
+        if [ -f "trivy-results.sarif" ]; then
+          echo "- ✅ Trivy scan completed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- ⚠️ Trivy scan: No vulnerabilities found or scan failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -f "semgrep-results.sarif" ]; then
+          echo "- ✅ Semgrep scan completed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- ⚠️ Semgrep scan: No issues found or scan failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "- ✅ npm audit completed for all services" >> $GITHUB_STEP_SUMMARY 

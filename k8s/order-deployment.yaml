@@ -38,6 +38,11 @@ spec:
             configMapKeyRef:
               name: lux-gaming-config
               key: HOST
+        - name: DATABASE_URL_DEV
+          valueFrom:
+            secretKeyRef:
+              name: lux-gaming-secrets
+              key: DATABASE_URL_DEV
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
