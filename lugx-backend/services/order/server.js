@@ -73,7 +73,19 @@ const allowedRoutes = [
   },
   {
     method: "GET",
+    path: "/health/order",
+    requiredParamsCount: 0,
+    allowedQueryParams: [],
+  },
+  {
+    method: "GET",
     path: "/metrics",
+    requiredParamsCount: 0,
+    allowedQueryParams: [],
+  },
+  {
+    method: "GET",
+    path: "/metrics/order",
     requiredParamsCount: 0,
     allowedQueryParams: [],
   },
@@ -90,7 +102,21 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/health/order", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    service: "order-service",
+    version: "1.0.0",
+  });
+});
+
 app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+
+app.get("/metrics/order", async (req, res) => {
   res.set("Content-Type", register.contentType);
   res.end(await register.metrics());
 });
@@ -124,7 +150,11 @@ async function startServer() {
       const host = address.address === "::" ? "localhost" : address.address;
       console.log(`🛒 Order Service running on ${host}:${PORT}`);
       console.log(`📊 Metrics available at http://${host}:${PORT}/metrics`);
+      console.log(
+        `📊 Metrics available at http://${host}:${PORT}/metrics/order`
+      );
       console.log(`🏥 Health check at http://${host}:${PORT}/health`);
+      console.log(`🏥 Health check at http://${host}:${PORT}/health/order`);
     });
 
     const shutdown = async (signal) => {

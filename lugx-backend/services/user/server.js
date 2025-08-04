@@ -72,7 +72,19 @@ const allowedRoutes = [
   },
   {
     method: "GET",
+    path: "/health/user",
+    requiredParamsCount: 0,
+    allowedQueryParams: [],
+  },
+  {
+    method: "GET",
     path: "/metrics",
+    requiredParamsCount: 0,
+    allowedQueryParams: [],
+  },
+  {
+    method: "GET",
+    path: "/metrics/user",
     requiredParamsCount: 0,
     allowedQueryParams: [],
   },
@@ -89,12 +101,52 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/health/user", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    service: "user-service",
+    version: "1.0.0",
+  });
+});
+
 app.get("/metrics", async (req, res) => {
   res.set("Content-Type", register.contentType);
   res.end(await register.metrics());
 });
 
-app.use("/", userRoutes);
+app.get("/metrics/user", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+
+const {
+  login,
+  register: registerUser,
+} = require("./controllers/userController");
+const { body } = require("express-validator");
+
+const registerValidation = [
+  body("username")
+    .isLength({ min: 3, max: 50 })
+    .withMessage("Username must be between 3 and 50 characters"),
+  body("email").isEmail().withMessage("Please provide a valid email"),
+  body("password")
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters long"),
+  body("first_name")
+    .optional()
+    .isLength({ max: 50 })
+    .withMessage("First name must be less than 50 characters"),
+  body("last_name")
+    .optional()
+    .isLength({ max: 50 })
+    .withMessage("Last name must be less than 50 characters"),
+];
+
+app.post("/login", login);
+app.post("/register", registerValidation, registerUser);
+app.use("/users", userRoutes);
 
 app.use("*", (req, res) => {
   res.status(404).json({
@@ -123,7 +175,11 @@ async function startServer() {
       const host = address.address === "::" ? "localhost" : address.address;
       console.log(`👤 User Service running on ${host}:${PORT}`);
       console.log(`📊 Metrics available at http://${host}:${PORT}/metrics`);
+      console.log(
+        `📊 Metrics available at http://${host}:${PORT}/metrics/user`
+      );
       console.log(`🏥 Health check at http://${host}:${PORT}/health`);
+      console.log(`🏥 Health check at http://${host}:${PORT}/health/user`);
     });
 
     const shutdown = async (signal) => {

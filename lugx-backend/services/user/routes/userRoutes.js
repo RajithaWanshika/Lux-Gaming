@@ -7,8 +7,6 @@ const {
   getUserById,
   updateUser,
   deleteUser,
-  register,
-  login,
 } = require("../controllers/userController");
 const authenticateToken = require("../middlewares/authenticateToken");
 
@@ -84,11 +82,8 @@ const userByIdValidation = [
     .withMessage("User ID must be a positive integer"),
 ];
 
-router.post("/register", registerValidation, register);
-router.post("/login", login);
-
-router.get("/", userQueryValidation, getUsers);
-router.get("/:id", userByIdValidation, getUserById);
+router.get("/", authenticateToken, userQueryValidation, getUsers);
+router.get("/:id", authenticateToken, userByIdValidation, getUserById);
 router.post("/", authenticateToken, registerValidation, addUser);
 router.put(
   "/:id",

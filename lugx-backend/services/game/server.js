@@ -71,7 +71,19 @@ const allowedRoutes = [
   },
   {
     method: "GET",
+    path: "/health/game",
+    requiredParamsCount: 0,
+    allowedQueryParams: [],
+  },
+  {
+    method: "GET",
     path: "/metrics",
+    requiredParamsCount: 0,
+    allowedQueryParams: [],
+  },
+  {
+    method: "GET",
+    path: "/metrics/game",
     requiredParamsCount: 0,
     allowedQueryParams: [],
   },
@@ -88,7 +100,21 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/health/game", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    service: "game-service",
+    version: "1.0.0",
+  });
+});
+
 app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+
+app.get("/metrics/game", async (req, res) => {
   res.set("Content-Type", register.contentType);
   res.end(await register.metrics());
 });
@@ -123,7 +149,11 @@ async function startServer() {
 
       console.log(`🎮 Game Service running on ${host}:${PORT}`);
       console.log(`📊 Metrics available at http://${host}:${PORT}/metrics`);
+      console.log(
+        `📊 Metrics available at http://${host}:${PORT}/metrics/game`
+      );
       console.log(`🏥 Health check at http://${host}:${PORT}/health`);
+      console.log(`🏥 Health check at http://${host}:${PORT}/health/game`);
     });
 
     const shutdown = async (signal) => {

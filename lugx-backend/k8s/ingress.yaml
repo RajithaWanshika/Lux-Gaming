@@ -4,29 +4,95 @@ metadata:
   name: lux-gaming-ingress
   namespace: lux-gaming
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: nginx
   rules:
   - host: lugx.yourdomain.com
     http:
       paths:
-      - path: /game(/|$)(.*)
-        pathType: Prefix
+      - path: /games(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: game-service
             port:
               number: 80
-      - path: /order(/|$)(.*)
-        pathType: Prefix
+      
+      - path: /orders(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: order-service
             port:
               number: 80
-      - path: /user(/|$)(.*)
-        pathType: Prefix
+      
+      - path: /users(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 80
+      
+      - path: /login
+        pathType: Exact
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 80
+      
+      - path: /register
+        pathType: Exact
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 80
+      
+      - path: /health/game
+        pathType: Exact
+        backend:
+          service:
+            name: game-service
+            port:
+              number: 80
+      
+      - path: /health/order
+        pathType: Exact
+        backend:
+          service:
+            name: order-service
+            port:
+              number: 80
+      
+      - path: /health/user
+        pathType: Exact
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 80
+      
+      - path: /metrics/game
+        pathType: Exact
+        backend:
+          service:
+            name: game-service
+            port:
+              number: 80
+      
+      - path: /metrics/order
+        pathType: Exact
+        backend:
+          service:
+            name: order-service
+            port:
+              number: 80
+      
+      - path: /metrics/user
+        pathType: Exact
         backend:
           service:
             name: user-service
