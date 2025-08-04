@@ -87,26 +87,80 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: Create complete infrastructure
+    - name: Create or update infrastructure
       run: |
-        # Create CloudFormation stack with all resources
-        aws cloudformation create-stack \
-          --stack-name ${{ env.STACK_NAME }} \
-          --template-body file://cloudformation/complete-infrastructure.yaml \
-          --parameters \
-            ParameterKey=ClusterName,ParameterValue=${{ env.EKS_CLUSTER_NAME }} \
-            ParameterKey=NodeInstanceType,ParameterValue=t3.medium \
-            ParameterKey=NodeGroupMinSize,ParameterValue=2 \
-            ParameterKey=NodeGroupMaxSize,ParameterValue=4 \
-            ParameterKey=NodeGroupDesiredSize,ParameterValue=2 \
-            ParameterKey=ECRRepositoryName,ParameterValue=${{ env.ECR_REPOSITORY }} \
-          --capabilities CAPABILITY_NAMED_IAM \
-          --region ${{ env.AWS_REGION }} || true
+        # Check if stack exists
+        if aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} --region ${{ env.AWS_REGION }} 2>/dev/null; then
+          echo "🔄 Stack exists - updating infrastructure..."
+          # Update existing stack
+          aws cloudformation update-stack \
+            --stack-name ${{ env.STACK_NAME }} \
+            --template-body file://cloudformation/complete-infrastructure.yaml \
+            --parameters \
+              ParameterKey=ClusterName,ParameterValue=${{ env.EKS_CLUSTER_NAME }} \
+              ParameterKey=NodeInstanceType,ParameterValue=t3.medium \
+              ParameterKey=NodeGroupMinSize,ParameterValue=2 \
+              ParameterKey=NodeGroupMaxSize,ParameterValue=4 \
+              ParameterKey=NodeGroupDesiredSize,ParameterValue=2 \
+              ParameterKey=ECRRepositoryName,ParameterValue=${{ env.ECR_REPOSITORY }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region ${{ env.AWS_REGION }} || echo "No updates needed"
+          
+          # Wait for stack update
+          aws cloudformation wait stack-update-complete \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} || true
+        else
+          echo "🚀 Stack doesn't exist - creating new infrastructure..."
+          # Create new stack
+          aws cloudformation create-stack \
+            --stack-name ${{ env.STACK_NAME }} \
+            --template-body file://cloudformation/complete-infrastructure.yaml \
+            --parameters \
+              ParameterKey=ClusterName,ParameterValue=${{ env.EKS_CLUSTER_NAME }} \
+              ParameterKey=NodeInstanceType,ParameterValue=t3.medium \
+              ParameterKey=NodeGroupMinSize,ParameterValue=2 \
+              ParameterKey=NodeGroupMaxSize,ParameterValue=4 \
+              ParameterKey=NodeGroupDesiredSize,ParameterValue=2 \
+              ParameterKey=ECRRepositoryName,ParameterValue=${{ env.ECR_REPOSITORY }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region ${{ env.AWS_REGION }}
+          
+          # Wait for stack creation
+          aws cloudformation wait stack-create-complete \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }}
+        fi
         
-        # Wait for stack creation
-        aws cloudformation wait stack-create-complete \
-          --stack-name ${{ env.STACK_NAME }} \
-          --region ${{ env.AWS_REGION }}
+    - name: Show infrastructure status
+      run: |
+        echo "📊 Infrastructure Status:"
+        echo "=========================="
+        
+        # Check EKS cluster
+        if aws eks describe-cluster --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }} 2>/dev/null; then
+          echo "✅ EKS Cluster: ${{ env.EKS_CLUSTER_NAME }} (EXISTS)"
+        else
+          echo "❌ EKS Cluster: ${{ env.EKS_CLUSTER_NAME }} (NOT FOUND)"
+        fi
+        
+        # Check ECR repositories
+        for repo in frontend game user order analytics api-gateway; do
+          if aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }}-$repo --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "✅ ECR Repository: ${{ env.ECR_REPOSITORY }}-$repo (EXISTS)"
+          else
+            echo "❌ ECR Repository: ${{ env.ECR_REPOSITORY }}-$repo (NOT FOUND)"
+          fi
+        done
+        
+        # Check IAM user
+        if aws iam get-user --user-name github-actions-lux-gaming --region ${{ env.AWS_REGION }} 2>/dev/null; then
+          echo "✅ IAM User: github-actions-lux-gaming (EXISTS)"
+        else
+          echo "❌ IAM User: github-actions-lux-gaming (NOT FOUND)"
+        fi
+        
+        echo "=========================="
         
     - name: Create IAM access keys
       run: |
