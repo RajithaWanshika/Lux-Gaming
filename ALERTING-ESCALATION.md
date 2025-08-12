@@ -18,6 +18,7 @@ When health checks detect issues every 15 minutes, here's what happens:
   - User Service: `http://localhost:8081/health/user`
   - Game Service: `http://localhost:8082/health/game`
   - Order Service: `http://localhost:8083/health/order`
+  - Order Service: `http://localhost:8083/health/analytics`
 - **Action**: Deployment restart
 - **Alert**: Immediate notification
 
@@ -38,11 +39,11 @@ kubectl delete pod <failed-pod-name> -n lux-gaming
 
 ### **When Health Checks Fail:**
 ```bash
-# Restart specific deployment
 kubectl rollout restart deployment/frontend-service -n lux-gaming
 kubectl rollout restart deployment/user-service -n lux-gaming
 kubectl rollout restart deployment/game-service -n lux-gaming
 kubectl rollout restart deployment/order-service -n lux-gaming
+kubectl rollout restart deployment/analytics-service.yaml -n lux-gaming
 # Wait 60 seconds for restart
 # Re-run health checks
 ```
@@ -222,21 +223,6 @@ kubectl rollout status deployment/<deployment-name> -n lux-gaming
 4. Execute rollback
 5. Verify rollback success
 
-## 📈 **Metrics & Monitoring**
-
-### **Key Metrics to Monitor:**
-- **Response Time**: < 2 seconds
-- **Error Rate**: < 1%
-- **Pod Restart Rate**: < 5 restarts/hour
-- **Resource Usage**: CPU < 80%, Memory < 80%
-
-### **Alert Thresholds:**
-- **Critical**: Service down for > 5 minutes
-- **Warning**: Service slow (> 5 seconds response time)
-- **Info**: Pod restart > 3 times in 15 minutes
-
-## 🛠️ **Troubleshooting Commands**
-
 ### **Quick Diagnostics:**
 ```bash
 # Check all resources
@@ -271,20 +257,6 @@ kubectl rollout history deployment/<deployment-name> -n lux-gaming
 kubectl get ingress -n lux-gaming
 kubectl describe ingress lux-gaming-ingress -n lux-gaming
 ```
-
-## 📞 **Emergency Contacts**
-
-### **Escalation Matrix:**
-1. **Level 1**: DevOps Team (0-15 minutes)
-2. **Level 2**: Senior DevOps Engineer (15-30 minutes)
-3. **Level 3**: Platform Lead (30-60 minutes)
-4. **Level 4**: CTO/Engineering Director (60+ minutes)
-
-### **Communication Channels:**
-- **Slack**: #lux-gaming-alerts
-- **Email**: devops@company.com
-- **Phone**: Emergency hotline
-- **GitHub**: Issues and discussions
 
 ## 🎯 **Best Practices**
 
