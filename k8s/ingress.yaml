@@ -105,7 +105,7 @@ spec:
           service:
             name: analytics-service
             port:
-              number: 3004
+              number: 80
       
       - path: /track(/|$)(.*)
         pathType: ImplementationSpecific
@@ -113,7 +113,7 @@ spec:
           service:
             name: analytics-service
             port:
-              number: 3004
+              number: 80
       
       - path: /demo(/|$)(.*)
         pathType: ImplementationSpecific
@@ -121,7 +121,7 @@ spec:
           service:
             name: analytics-service
             port:
-              number: 3004
+              number: 80
       
       - path: /health/analytics
         pathType: Exact
@@ -129,7 +129,7 @@ spec:
           service:
             name: analytics-service
             port:
-              number: 3004
+              number: 80
       
       - path: /
         pathType: Prefix

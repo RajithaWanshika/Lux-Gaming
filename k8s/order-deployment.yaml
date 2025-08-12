@@ -24,10 +24,10 @@ spec:
       - name: order-service
         image: rajithawan/lugx-order-image:latest
         ports:
-        - containerPort: 3004
+        - containerPort: 3003
         env:
         - name: PORT
-          value: "3004"
+          value: "3003"
         - name: NODE_ENV
           valueFrom:
             configMapKeyRef:
@@ -63,12 +63,12 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 3004
+            port: 3003
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: 3004
+            port: 3003
           initialDelaySeconds: 5
           periodSeconds: 5
