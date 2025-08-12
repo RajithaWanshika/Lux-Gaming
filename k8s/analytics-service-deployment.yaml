@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: analytics-service
-  namespace: lugx-gaming
+  namespace: lux-gaming
   labels:
     app: analytics-service
     version: v1
@@ -79,20 +79,3 @@ spec:
         emptyDir: {}
       restartPolicy: Always
       imagePullPolicy: IfNotPresent
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: analytics-service
-  namespace: lugx-gaming
-  labels:
-    app: analytics-service
-spec:
-  type: ClusterIP
-  ports:
-  - port: 3004
-    targetPort: 3004
-    protocol: TCP
-    name: http
-  selector:
-    app: analytics-service
