@@ -11,10 +11,7 @@ class ClickHouseService {
         process.env.CLICKHOUSE_URL ||
         "https://akl2spzdfi.us-east-2.aws.clickhouse.cloud:8443",
       username: process.env.CLICKHOUSE_USER || "default",
-      password:
-        process.env.CLICKHOUSE_PASSWORD_SECRET ||
-        process.env.CLICKHOUSE_PASSWORD ||
-        "",
+      password: process.env.CLICKHOUSE_PASSWORD || "",
       application: "analytics-service",
       clickhouse_settings: {
         async_insert: 1,
