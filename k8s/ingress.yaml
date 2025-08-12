@@ -99,6 +99,38 @@ spec:
             port:
               number: 80
       
+      - path: /analytics(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: analytics-service
+            port:
+              number: 3004
+      
+      - path: /track(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: analytics-service
+            port:
+              number: 3004
+      
+      - path: /demo(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: analytics-service
+            port:
+              number: 3004
+      
+      - path: /health/analytics
+        pathType: Exact
+        backend:
+          service:
+            name: analytics-service
+            port:
+              number: 3004
+      
       - path: /
         pathType: Prefix
         backend:
