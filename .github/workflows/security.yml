@@ -90,7 +90,7 @@ jobs:
         run_audit "lugx-backend/services/user" "user"
         run_audit "lugx-backend/services/game" "game" 
         run_audit "lugx-backend/services/order" "order"
-        
+        run_audit "lugx-backend/services/analytics" "analytics"
         # Check for frontend package.json too
         if [ -f "package.json" ]; then
           echo "Auditing root project..."

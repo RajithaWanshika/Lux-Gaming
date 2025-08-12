@@ -96,6 +96,10 @@ jobs:
             SERVICE_NAME="order-service"
             HEALTH_PATH="/health/order"
             ;;
+          "analytics-service")
+            SERVICE_NAME="analytics-service"
+            HEALTH_PATH="/health/analytics"
+            ;;
         esac
         
         if [ ! -z "$SERVICE_NAME" ]; then

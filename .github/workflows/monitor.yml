@@ -81,12 +81,21 @@ jobs:
         ORDER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8083/health/order)
         pkill -f "port-forward.*order-service"
         echo "Order Service Status: $ORDER_STATUS"
+
+        # Test analytics service
+        echo "Testing Analytics Service..."
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/analytics-service 8084:80 &
+        sleep 10
+        ANALYTICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8084/health/analytics)
+        pkill -f "port-forward.*analytics-service"
+        echo "Analytics Service Status: $ANALYTICS_STATUS"
         
         # Store status for next step
         echo "FRONTEND_STATUS=$FRONTEND_STATUS" >> $GITHUB_ENV
         echo "USER_STATUS=$USER_STATUS" >> $GITHUB_ENV
         echo "GAME_STATUS=$GAME_STATUS" >> $GITHUB_ENV
         echo "ORDER_STATUS=$ORDER_STATUS" >> $GITHUB_ENV
+        echo "ANALYTICS_STATUS=$ANALYTICS_STATUS" >> $GITHUB_ENV
         
     - name: 📈 Check metrics
       run: |
@@ -113,6 +122,13 @@ jobs:
         pkill -f "port-forward.*order-service"
         echo "Order Metrics Sample:"
         echo "$ORDER_METRICS"
+        
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/analytics-service 8084:80 &
+        sleep 5
+        ANALYTICS_METRICS=$(curl -s http://localhost:8084/metrics/analytics | head -5)
+        pkill -f "port-forward.*analytics-service"
+        echo "Analytics Metrics Sample:"
+        echo "$ANALYTICS_METRICS"
         
     - name: 🚨 Check for issues
       run: |
@@ -147,6 +163,9 @@ jobs:
           fi
           if [ "$ORDER_STATUS" != "200" ]; then
             echo "HEALTH_ISSUES_DETAILS=${HEALTH_ISSUES_DETAILS:-}, Order: $ORDER_STATUS" >> $GITHUB_ENV
+          fi
+          if [ "$ANALYTICS_STATUS" != "200" ]; then
+            echo "HEALTH_ISSUES_DETAILS=${HEALTH_ISSUES_DETAILS:-}, Analytics: $ANALYTICS_STATUS" >> $GITHUB_ENV
           fi
         else
           echo "✅ All health checks passed"
@@ -214,6 +233,11 @@ jobs:
             kubectl rollout restart deployment/order-service -n ${{ env.EKS_NAMESPACE }}
           fi
           
+          if [ "$ANALYTICS_STATUS" != "200" ]; then
+            echo "Restarting analytics service deployment..."
+            kubectl rollout restart deployment/analytics-service -n ${{ env.EKS_NAMESPACE }}
+          fi
+          
           echo "⏳ Waiting for deployments to restart..."
           sleep 60
           
@@ -270,12 +294,14 @@ jobs:
         echo "- User Service: $USER_STATUS" >> $GITHUB_STEP_SUMMARY
         echo "- Game Service: $GAME_STATUS" >> $GITHUB_STEP_SUMMARY
         echo "- Order Service: $ORDER_STATUS" >> $GITHUB_STEP_SUMMARY
+        echo "- Analytics Service: $ANALYTICS_STATUS" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         echo "### 📈 Metrics:" >> $GITHUB_STEP_SUMMARY
         echo "- User metrics endpoint: /metrics/user" >> $GITHUB_STEP_SUMMARY
         echo "- Game metrics endpoint: /metrics/game" >> $GITHUB_STEP_SUMMARY
         echo "- Order metrics endpoint: /metrics/order" >> $GITHUB_STEP_SUMMARY
+        echo "- Analytics metrics endpoint: /metrics/analytics" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "$FAILED_PODS" = "true" ]; then

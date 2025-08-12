@@ -169,7 +169,7 @@ jobs:
         platforms: linux/amd64
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        
+
     - name: 🏗️ Build and push Order Service image
       uses: docker/build-push-action@v5
       with:
@@ -181,7 +181,19 @@ jobs:
         platforms: linux/amd64
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        
+
+    - name: 🏗️ Build and push Analytics Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./lugx-backend/services/analytics
+        push: true
+        tags: |
+          rajithawan/lugx-analytics-image:latest
+          rajithawan/lugx-analytics-image:${{ github.sha }}
+        platforms: linux/amd64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
     - name: 🔄 Update Kubernetes manifests
       run: |
         # Update image tags in deployment files
@@ -189,6 +201,7 @@ jobs:
         sed -i "s|rajithawan/lugx-user-image:.*|rajithawan/lugx-user-image:${{ github.sha }}|g" k8s/user-deployment.yaml
         sed -i "s|rajithawan/lugx-game-image:.*|rajithawan/lugx-game-image:${{ github.sha }}|g" k8s/game-deployment.yaml
         sed -i "s|rajithawan/lugx-order-image:.*|rajithawan/lugx-order-image:${{ github.sha }}|g" k8s/order-deployment.yaml
+        sed -i "s|rajithawan/lugx-analytics-image:.*|rajithawan/lugx-analytics-image:${{ github.sha }}|g" k8s/analytics-service-deployment.yaml
         
     - name: 🔧 Install AWS Load Balancer Controller (if new cluster)
       if: needs.check-and-create-infrastructure.outputs.cluster-exists == 'false'
@@ -225,18 +238,21 @@ jobs:
         # Apply ConfigMap and Secret
         kubectl apply -f k8s/configmap.yaml
         kubectl apply -f k8s/secret.yaml
+        kubectl apply -f k8s/analytics-secret.yaml
         
         # Apply deployments
         kubectl apply -f k8s/frontend-deployment.yaml
         kubectl apply -f k8s/user-deployment.yaml
         kubectl apply -f k8s/game-deployment.yaml
         kubectl apply -f k8s/order-deployment.yaml
+        kubectl apply -f k8s/analytics-service-deployment.yaml
         
         # Apply services
         kubectl apply -f k8s/frontend-service.yaml
         kubectl apply -f k8s/user-service.yaml
         kubectl apply -f k8s/game-service.yaml
         kubectl apply -f k8s/order-service.yaml
+        kubectl apply -f k8s/analytics-service.yaml
         
         # Apply ingress
         kubectl apply -f k8s/ingress.yaml
@@ -246,6 +262,7 @@ jobs:
         kubectl rollout status deployment/user-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
         kubectl rollout status deployment/game-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
         kubectl rollout status deployment/order-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
+        kubectl rollout status deployment/analytics-service -n ${{ env.EKS_NAMESPACE }} --timeout=300s
         
     - name: ✅ Verify deployment
       run: |
@@ -287,6 +304,12 @@ jobs:
         curl -f http://localhost:8083/health/order || echo "Order service health check failed"
         pkill -f "port-forward.*order-service"
         
+        # Test analytics service
+        kubectl port-forward -n ${{ env.EKS_NAMESPACE }} service/analytics-service 8084:80 &
+        sleep 10
+        curl -f http://localhost:8084/health/analytics || echo "Analytics service health check failed"
+        pkill -f "port-forward.*analytics-service"
+        
     - name: 📊 Deployment Summary
       if: always()
       run: |
@@ -315,3 +338,4 @@ jobs:
         echo "- User Service: rajithawan/lugx-user-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- Game Service: rajithawan/lugx-game-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- Order Service: rajithawan/lugx-order-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Analytics Service: rajithawan/lugx-analytics-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

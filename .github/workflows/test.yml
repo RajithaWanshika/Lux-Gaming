@@ -41,6 +41,11 @@ jobs:
         npm ci || npm install
         cd ../..
         
+        # Install analytics service dependencies
+        cd lugx-backend/services/analytics
+        npm ci || npm install
+        cd ../..
+        
     - name: 🧪 Run tests
       run: |
         echo "Running tests for all services..."
@@ -60,6 +65,11 @@ jobs:
         npm test || echo "Order service tests failed"
         cd ../..
         
+        # Test analytics service
+        cd lugx-backend/services/analytics
+        npm test || echo "Analytics service tests failed"
+        cd ../..
+        
     - name: 🔍 Lint code
       run: |
         echo "Running linting for all services..."
@@ -77,6 +87,11 @@ jobs:
         # Lint order service
         cd lugx-backend/services/order
         npm run lint || echo "Order service linting failed"
+        cd ../..
+        
+        # Lint analytics service
+        cd lugx-backend/services/analytics
+        npm run lint || echo "Analytics service linting failed"
         cd ../..
         
     - name: 🐳 Build Docker images (without pushing)
@@ -118,6 +133,14 @@ jobs:
         context: ./lugx-backend/services/order
         push: false
         tags: rajithawan/lugx-order-image:test
+        platforms: linux/amd64
+        
+    - name: 🏗️ Build Analytics Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./lugx-backend/services/analytics
+        push: false
+        tags: rajithawan/lugx-analytics-image:test
         platforms: linux/amd64
         
     - name: ✅ Test Summary
