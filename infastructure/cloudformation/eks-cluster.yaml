@@ -234,8 +234,7 @@ Resources:
       UpdateConfig:
         MaxUnavailable: 1
       Tags:
-        - Key: Name
-          Value: !Sub ${ClusterName}-nodegroup
+        Name: !Sub ${ClusterName}-nodegroup
 
 Outputs:
   ClusterName:
