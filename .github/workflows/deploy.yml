@@ -39,13 +39,13 @@ jobs:
         
         # Check if cluster exists
         if aws eks describe-cluster --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
-          echo "✅ EKS cluster exists"
+          echo "EKS cluster exists"
           CLUSTER_STATUS=$(aws eks describe-cluster --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }} --query 'cluster.status' --output text)
           echo "exists=true" >> $GITHUB_OUTPUT
           echo "status=$CLUSTER_STATUS" >> $GITHUB_OUTPUT
           echo "CLUSTER_STATUS=$CLUSTER_STATUS" >> $GITHUB_ENV
         else
-          echo "❌ EKS cluster does not exist"
+          echo "EKS cluster does not exist"
           echo "exists=false" >> $GITHUB_OUTPUT
           echo "status=NOT_FOUND" >> $GITHUB_OUTPUT
           echo "CLUSTER_STATUS=NOT_FOUND" >> $GITHUB_ENV
@@ -54,7 +54,7 @@ jobs:
     - name: 🏗️ Create EKS cluster if not exists
       if: steps.check-cluster.outputs.exists == 'false'
       run: |
-        echo "🚀 Creating EKS cluster using CloudFormation..."
+        echo "Creating EKS cluster using CloudFormation..."
         
         # Deploy CloudFormation stack
         aws cloudformation deploy \
@@ -68,12 +68,12 @@ jobs:
           --capabilities CAPABILITY_IAM \
           --region ${{ env.AWS_REGION }}
           
-        echo "✅ CloudFormation stack deployment initiated"
+        echo "CloudFormation stack deployment initiated"
         
     - name: ⏳ Wait for EKS cluster to be ready
       if: steps.check-cluster.outputs.exists == 'false' || steps.check-cluster.outputs.status != 'ACTIVE'
       run: |
-        echo "⏳ Waiting for EKS cluster to be in ACTIVE state..."
+        echo "Waiting for EKS cluster to be in ACTIVE state..."
         
         # Wait for cluster to be active (max 30 minutes)
         timeout 1800 bash -c '
@@ -82,63 +82,63 @@ jobs:
             echo "Current cluster status: $STATUS"
             
             if [ "$STATUS" = "ACTIVE" ]; then
-              echo "✅ EKS cluster is now ACTIVE"
+              echo "EKS cluster is now ACTIVE"
               break
             elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "DELETING" ]; then
-              echo "❌ EKS cluster creation failed with status: $STATUS"
+              echo "EKS cluster creation failed with status: $STATUS"
               exit 1
             fi
             
-            echo "⏳ Waiting 30 seconds before next check..."
+            echo "Waiting 30 seconds before next check..."
             sleep 30
           done
         '
         
     - name: 🔗 Configure kubectl
       run: |
-        echo "🔗 Configuring kubectl for cluster ${{ env.EKS_CLUSTER_NAME }}..."
+        echo "Configuring kubectl for cluster ${{ env.EKS_CLUSTER_NAME }}..."
         aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
         
         # Verify connection
         kubectl get nodes
-        echo "✅ kubectl configured successfully"
+        echo "kubectl configured successfully"
 
   build-and-deploy:
     runs-on: ubuntu-latest
     needs: check-and-create-infrastructure
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: 🔧 Setup Node.js
+    - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         
-    - name: 🔐 Configure AWS credentials
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: 🔗 Configure kubectl
+    - name: Configure kubectl
       run: |
         aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
         
-    - name: 🐳 Set up Docker Buildx
+    - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       
-    - name: 🔐 Login to Docker Hub
+    - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
         
-    - name: 🔄 Update Frontend configuration with ALB URLs
+    - name: Update Frontend configuration with ALB URLs
       run: |
-        echo "🔄 Updating frontend configuration with ALB URLs..."
+        echo "Updating frontend configuration with ALB URLs..."
         
         # Update analytics.js with ALB URL
         if [ -f "lux-frontend/assets/js/analytics.js" ]; then
@@ -147,7 +147,7 @@ jobs:
           
           # Replace localhost URL with ALB URL
           sed -i 's|http://localhost:3004|${{ env.ALB_BASE_URL }}|g' lux-frontend/assets/js/analytics.js
-          echo "✅ Updated analytics.js with ALB URL"
+          echo "Updated analytics.js with ALB URL"
         fi
         
         # Create or update config.js with ALB URLs
@@ -170,9 +170,9 @@ jobs:
           }
         };
         EOF
-        echo "✅ Created config.js with ALB configuration (Environment: ${{ env.ENVIRONMENT }})"
+        echo "Created config.js with ALB configuration (Environment: ${{ env.ENVIRONMENT }})"
         
-    - name: 🏗️ Build and push Frontend image
+    - name: Build and push Frontend image
       uses: docker/build-push-action@v5
       with:
         context: ./lux-frontend
@@ -264,11 +264,11 @@ jobs:
           ENABLE_DEBUG: "true"
           CORS_ORIGIN: "*"
         EOF
-        echo "✅ Created ConfigMap for ${{ env.ENVIRONMENT }} environment"
+        echo "Created ConfigMap for ${{ env.ENVIRONMENT }} environment"
         
-    - name: ⏳ Wait for AWS Load Balancer Controller
+    - name: Wait for AWS Load Balancer Controller
       run: |
-        echo "⏳ Waiting for AWS Load Balancer Controller to be ready..."
+        echo "Waiting for AWS Load Balancer Controller to be ready..."
         
         # Wait for the controller to be ready
         timeout 300 bash -c '
@@ -276,7 +276,7 @@ jobs:
             if kubectl get deployment aws-load-balancer-controller -n kube-system >/dev/null 2>&1; then
               REPLICAS=$(kubectl get deployment aws-load-balancer-controller -n kube-system -o jsonpath="{.status.readyReplicas}" 2>/dev/null || echo "0")
               if [ "$REPLICAS" -ge "1" ]; then
-                echo "✅ AWS Load Balancer Controller is ready"
+                echo "AWS Load Balancer Controller is ready"
                 break
               fi
             fi
@@ -288,11 +288,11 @@ jobs:
         # Verify webhook is working
         kubectl get validatingwebhookconfiguration aws-load-balancer-webhook-configuration-v9 || \
         kubectl get validatingwebhookconfiguration | grep aws-load-balancer-webhook || \
-        echo "⚠️  Webhook configuration not found, but proceeding..."
+        echo "Webhook configuration not found, but proceeding..."
         
-        echo "✅ AWS Load Balancer Controller verification completed"
+        echo "AWS Load Balancer Controller verification completed"
         
-    - name: 🚀 Deploy to EKS
+    - name: Deploy to EKS
       run: |
         # Apply namespace
         kubectl apply -f k8s/namespace.yaml
@@ -328,7 +328,7 @@ jobs:
         
     - name: ⏳ Wait for ALB to be ready
       run: |
-        echo "⏳ Waiting for Application Load Balancer to be ready..."
+        echo "Waiting for Application Load Balancer to be ready..."
         
         # Wait for ingress to get an address (ALB provisioning)
         timeout 600 bash -c '
@@ -336,26 +336,26 @@ jobs:
             ALB_ADDRESS=$(kubectl get ingress lux-gaming-ingress -n ${{ env.EKS_NAMESPACE }} -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null || echo "")
             
             if [ -n "$ALB_ADDRESS" ]; then
-              echo "✅ ALB Address assigned: $ALB_ADDRESS"
+              echo "ALB Address assigned: $ALB_ADDRESS"
               
               # Check if ALB is actually reachable
               if curl -s --max-time 10 "http://$ALB_ADDRESS/health/user" >/dev/null 2>&1; then
-                echo "✅ ALB is responding to requests"
+                echo "ALB is responding to requests"
                 break
               else
-                echo "⏳ ALB address assigned but not yet responding to requests..."
+                echo "ALB address assigned but not yet responding to requests..."
               fi
             else
-              echo "⏳ Waiting for ALB address to be assigned..."
+              echo "Waiting for ALB address to be assigned..."
             fi
             
             sleep 30
           done
         '
         
-        echo "✅ Application Load Balancer is ready"
+        echo "Application Load Balancer is ready"
         
-    - name: ✅ Verify deployment
+    - name: Verify deployment
       run: |
         # Check pod status
         kubectl get pods -n ${{ env.EKS_NAMESPACE }}
@@ -368,53 +368,53 @@ jobs:
         
         # Get ALB URL
         ALB_URL=$(kubectl get ingress lux-gaming-ingress -n ${{ env.EKS_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-        echo "🌐 ALB URL: http://$ALB_URL"
+        echo "ALB URL: http://$ALB_URL"
         
         # Show ConfigMap for verification
-        echo "📋 Environment Configuration:"
+        echo "Environment Configuration:"
         kubectl get configmap lux-gaming-config -n ${{ env.EKS_NAMESPACE }} -o yaml
         
-    - name: 🧪 Run health checks via ALB
+    - name: Run health checks via ALB
       run: |
         # Get ALB URL
         ALB_URL=$(kubectl get ingress lux-gaming-ingress -n ${{ env.EKS_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
         
         if [ -z "$ALB_URL" ]; then
-          echo "❌ ALB URL not available, falling back to port-forwarding"
+          echo "ALB URL not available, falling back to port-forwarding"
           exit 1
         fi
         
-        echo "🧪 Running health checks via ALB: http://$ALB_URL (Environment: ${{ env.ENVIRONMENT }})"
+        echo "Running health checks via ALB: http://$ALB_URL (Environment: ${{ env.ENVIRONMENT }})"
         
         # Test frontend
         echo "Testing Frontend..."
-        curl -f --max-time 30 "http://$ALB_URL/" && echo "✅ Frontend OK" || echo "❌ Frontend health check failed"
+        curl -f --max-time 30 "http://$ALB_URL/" && echo "Frontend OK" || echo "Frontend health check failed"
         
         # Test user service
         echo "Testing User Service..."
-        curl -f --max-time 30 "http://$ALB_URL/health/user" && echo "✅ User Service OK" || echo "❌ User service health check failed"
+        curl -f --max-time 30 "http://$ALB_URL/health/user" && echo " User Service OK" || echo "❌ User service health check failed"
         
         # Test game service
         echo "Testing Game Service..."
-        curl -f --max-time 30 "http://$ALB_URL/health/game" && echo "✅ Game Service OK" || echo "❌ Game service health check failed"
+        curl -f --max-time 30 "http://$ALB_URL/health/game" && echo "Game Service OK" || echo "Game service health check failed"
         
         # Test order service
         echo "Testing Order Service..."
-        curl -f --max-time 30 "http://$ALB_URL/health/order" && echo "✅ Order Service OK" || echo "❌ Order service health check failed"
+        curl -f --max-time 30 "http://$ALB_URL/health/order" && echo "Order Service OK" || echo "❌ Order service health check failed"
         
         # Test analytics service
         echo "Testing Analytics Service..."
-        curl -f --max-time 30 "http://$ALB_URL/health/analytics" && echo "✅ Analytics Service OK" || echo "❌ Analytics service health check failed"
+        curl -f --max-time 30 "http://$ALB_URL/health/analytics" && echo "Analytics Service OK" || echo "❌ Analytics service health check failed"
         
-        echo "🎉 All health checks completed in ${{ env.ENVIRONMENT }} environment!"
+        echo "All health checks completed in ${{ env.ENVIRONMENT }} environment!"
         
-    - name: 📊 Deployment Summary
+    - name: Deployment Summary
       if: always()
       run: |
         # Get ALB URL for summary
         ALB_URL=$(kubectl get ingress lux-gaming-ingress -n ${{ env.EKS_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "Not available")
         
-        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
         echo "**Cluster:** ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
         echo "**Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
         echo "**Cluster Status:** ${{ needs.check-and-create-infrastructure.outputs.cluster-status }}" >> $GITHUB_STEP_SUMMARY
@@ -425,32 +425,32 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ needs.check-and-create-infrastructure.outputs.cluster-exists }}" = "false" ]; then
-          echo "### 🏗️ Infrastructure Created:" >> $GITHUB_STEP_SUMMARY
+          echo "### Infrastructure Created:" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ New EKS cluster created: ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ VPC and networking configured" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Node group provisioned" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ AWS Load Balancer Controller installed" >> $GITHUB_STEP_SUMMARY
         else
-          echo "### 🔄 Infrastructure Status:" >> $GITHUB_STEP_SUMMARY
+          echo "### Infrastructure Status:" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Used existing EKS cluster: ${{ env.EKS_CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📦 Deployed Images:" >> $GITHUB_STEP_SUMMARY
+        echo "### Deployed Images:" >> $GITHUB_STEP_SUMMARY
         echo "- Frontend: rajithawan/lugx-frontend-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- User Service: rajithawan/lugx-user-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- Game Service: rajithawan/lugx-game-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- Order Service: rajithawan/lugx-order-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- Analytics Service: rajithawan/lugx-analytics-image:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🌐 Service Endpoints:" >> $GITHUB_STEP_SUMMARY
+        echo "### Service Endpoints:" >> $GITHUB_STEP_SUMMARY
         echo "- **Frontend:** http://$ALB_URL/" >> $GITHUB_STEP_SUMMARY
         echo "- **User API:** http://$ALB_URL/users" >> $GITHUB_STEP_SUMMARY
         echo "- **Game API:** http://$ALB_URL/games" >> $GITHUB_STEP_SUMMARY
         echo "- **Order API:** http://$ALB_URL/orders" >> $GITHUB_STEP_SUMMARY
         echo "- **Analytics API:** http://$ALB_URL/analytics" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### ⚙️ Development Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "### Development Configuration:" >> $GITHUB_STEP_SUMMARY
         echo "- **Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Debug Mode:** Enabled" >> $GITHUB_STEP_SUMMARY
         echo "- **Log Level:** Debug" >> $GITHUB_STEP_SUMMARY
