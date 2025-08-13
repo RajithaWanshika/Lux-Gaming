@@ -203,32 +203,31 @@ jobs:
         sed -i "s|rajithawan/lugx-order-image:.*|rajithawan/lugx-order-image:${{ github.sha }}|g" k8s/order-deployment.yaml
         sed -i "s|rajithawan/lugx-analytics-image:.*|rajithawan/lugx-analytics-image:${{ github.sha }}|g" k8s/analytics-service-deployment.yaml
         
-    - name: 🔧 Install AWS Load Balancer Controller (if new cluster)
-      if: needs.check-and-create-infrastructure.outputs.cluster-exists == 'false'
+    - name: ⏳ Wait for AWS Load Balancer Controller
       run: |
-        echo "🔧 Installing AWS Load Balancer Controller..."
+        echo "⏳ Waiting for AWS Load Balancer Controller to be ready..."
         
-        # Create service account
-        eksctl create iamserviceaccount \
-          --cluster=${{ env.EKS_CLUSTER_NAME }} \
-          --namespace=kube-system \
-          --name=aws-load-balancer-controller \
-          --role-name AmazonEKSLoadBalancerControllerRole \
-          --attach-policy-arn=arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess \
-          --approve \
-          --override-existing-serviceaccounts || echo "Service account may already exist"
+        # Wait for the controller to be ready
+        timeout 300 bash -c '
+          while true; do
+            if kubectl get deployment aws-load-balancer-controller -n kube-system >/dev/null 2>&1; then
+              REPLICAS=$(kubectl get deployment aws-load-balancer-controller -n kube-system -o jsonpath="{.status.readyReplicas}" 2>/dev/null || echo "0")
+              if [ "$REPLICAS" -ge "1" ]; then
+                echo "✅ AWS Load Balancer Controller is ready"
+                break
+              fi
+            fi
+            echo "⏳ Waiting for AWS Load Balancer Controller deployment... (current ready replicas: $REPLICAS)"
+            sleep 10
+          done
+        '
         
-        # Install AWS Load Balancer Controller
-        helm repo add eks https://aws.github.io/eks-charts
-        helm repo update
+        # Verify webhook is working
+        kubectl get validatingwebhookconfiguration aws-load-balancer-webhook-configuration-v9 || \
+        kubectl get validatingwebhookconfiguration | grep aws-load-balancer-webhook || \
+        echo "⚠️  Webhook configuration not found, but proceeding..."
         
-        helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-          -n kube-system \
-          --set clusterName=${{ env.EKS_CLUSTER_NAME }} \
-          --set serviceAccount.create=false \
-          --set serviceAccount.name=aws-load-balancer-controller || echo "Controller may already be installed"
-        
-        echo "✅ AWS Load Balancer Controller installation completed"
+        echo "✅ AWS Load Balancer Controller verification completed"
         
     - name: 🚀 Deploy to EKS
       run: |

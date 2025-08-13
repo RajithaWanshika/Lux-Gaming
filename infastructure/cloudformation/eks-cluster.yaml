@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'EKS Cluster with Node Groups for Lux Gaming Platform'
+Description: 'Simple EKS Cluster for Lux Gaming Platform'
 
 Parameters:
   ClusterName:
     Type: String
-    Default: lugx-cluster-man
+    Default: lugx-cluster
     Description: Name of the EKS cluster
   
   NodeGroupDesiredSize:
@@ -19,30 +19,33 @@ Parameters:
   
   NodeGroupMaxSize:
     Type: Number
-    Default: 5
+    Default: 4
     Description: Maximum number of worker nodes
   
   NodeGroupInstanceType:
     Type: String
     Default: t3.medium
     Description: EC2 instance type for worker nodes
-  
-  VpcCidr:
-    Type: String
-    Default: 10.0.0.0/16
-    Description: CIDR block for VPC
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+      - m5.large
+      - m5.xlarge
 
 Resources:
   # VPC
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !Ref VpcCidr
+      CidrBlock: 10.0.0.0/16
       EnableDnsHostnames: true
       EnableDnsSupport: true
       Tags:
         - Key: Name
           Value: !Sub ${ClusterName}-vpc
+        - Key: kubernetes.io/cluster/!Ref ClusterName
+          Value: shared
 
   # Internet Gateway
   InternetGateway:
@@ -59,7 +62,67 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  # Elastic IP for NAT Gateway
+  # Public Subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-public-subnet-1
+        - Key: kubernetes.io/role/elb
+          Value: 1
+        - Key: kubernetes.io/cluster/!Ref ClusterName
+          Value: shared
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-public-subnet-2
+        - Key: kubernetes.io/role/elb
+          Value: 1
+        - Key: kubernetes.io/cluster/!Ref ClusterName
+          Value: shared
+
+  # Private Subnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.3.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-private-subnet-1
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+        - Key: kubernetes.io/cluster/!Ref ClusterName
+          Value: owned
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.4.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-private-subnet-2
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+        - Key: kubernetes.io/cluster/!Ref ClusterName
+          Value: owned
+
+  # NAT Gateway EIP
   NATGatewayEIP:
     Type: AWS::EC2::EIP
     DependsOn: AttachGateway
@@ -78,58 +141,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${ClusterName}-nat-gateway
-
-  # Public Subnets
-  PublicSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.0.1.0/24
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub ${ClusterName}-public-subnet-1
-        - Key: kubernetes.io/role/elb
-          Value: 1
-
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.0.2.0/24
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub ${ClusterName}-public-subnet-2
-        - Key: kubernetes.io/role/elb
-          Value: 1
-
-  # Private Subnets
-  PrivateSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.0.3.0/24
-      Tags:
-        - Key: Name
-          Value: !Sub ${ClusterName}-private-subnet-1
-        - Key: kubernetes.io/role/internal-elb
-          Value: 1
-
-  PrivateSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.0.4.0/24
-      Tags:
-        - Key: Name
-          Value: !Sub ${ClusterName}-private-subnet-2
-        - Key: kubernetes.io/role/internal-elb
-          Value: 1
 
   # Route Table for Public Subnets
   PublicRouteTable:
@@ -192,7 +203,27 @@ Resources:
       SubnetId: !Ref PrivateSubnet2
       RouteTableId: !Ref PrivateRouteTable
 
-  # EKS Cluster Role
+  # EKS Cluster Security Group
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EKS cluster control plane
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS access to cluster API
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: All outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-cluster-sg
+
+  # EKS Cluster Service Role
   EKSClusterRole:
     Type: AWS::IAM::Role
     Properties:
@@ -205,6 +236,10 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+      Path: /
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-cluster-role
 
   # EKS Cluster
   EKSCluster:
@@ -221,31 +256,18 @@ Resources:
           - !Ref PrivateSubnet2
           - !Ref PublicSubnet1
           - !Ref PublicSubnet2
-
-  # Cluster Security Group
-  ClusterSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for EKS cluster
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS from anywhere
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-          Description: SSH from anywhere
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-          Description: All outbound traffic
+        EndpointConfigPrivate: false
+        EndpointConfigPublic: true
+        PublicAccessCidrs:
+          - 0.0.0.0/0
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
       Tags:
         - Key: Name
-          Value: !Sub ${ClusterName}-cluster-sg
+          Value: !Ref ClusterName
 
   # Node Group Role
   NodeGroupRole:
@@ -262,13 +284,10 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
-
-  # Node Group Instance Profile
-  NodeGroupInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles:
-        - !Ref NodeGroupRole
+      Path: /
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-nodegroup-role
 
   # Node Group Security Group
   NodeGroupSecurityGroup:
@@ -278,20 +297,20 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-          Description: SSH from anywhere
-        - IpProtocol: tcp
           FromPort: 1025
           ToPort: 65535
           SourceSecurityGroupId: !Ref ClusterSecurityGroup
-          Description: Node to node communication
+          Description: Allow cluster to communicate with nodes
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           SourceSecurityGroupId: !Ref ClusterSecurityGroup
-          Description: Node to cluster communication
+          Description: Allow cluster to communicate with nodes on HTTPS
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/16
+          Description: SSH access from VPC
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
@@ -300,9 +319,21 @@ Resources:
         - Key: Name
           Value: !Sub ${ClusterName}-nodegroup-sg
 
-  # Node Group
+  # Allow nodes to communicate with cluster
+  ClusterSecurityGroupIngressFromNodes:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref NodeGroupSecurityGroup
+      Description: Allow nodes to communicate with cluster API
+
+  # EKS Node Group
   NodeGroup:
     Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
     Properties:
       ClusterName: !Ref EKSCluster
       NodegroupName: !Sub ${ClusterName}-nodegroup
@@ -312,41 +343,20 @@ Resources:
         - !Ref PrivateSubnet2
       InstanceTypes:
         - !Ref NodeGroupInstanceType
+      AmiType: AL2_x86_64
+      CapacityType: ON_DEMAND
       ScalingConfig:
         MinSize: !Ref NodeGroupMinSize
         MaxSize: !Ref NodeGroupMaxSize
         DesiredSize: !Ref NodeGroupDesiredSize
       UpdateConfig:
         MaxUnavailable: 1
+      RemoteAccess:
+        SourceSecurityGroups:
+          - !Ref NodeGroupSecurityGroup
       Tags:
         Name: !Sub ${ClusterName}-nodegroup
-
-  # VPC CNI Add-on
-  VPCCNIAddon:
-    Type: AWS::EKS::Addon
-    Properties:
-      AddonName: vpc-cni
-      ClusterName: !Ref EKSCluster
-      AddonVersion: v1.16.0-eksbuild.1
-      ResolveConflicts: OVERWRITE
-
-  # CoreDNS Add-on
-  CoreDNSAddon:
-    Type: AWS::EKS::Addon
-    Properties:
-      AddonName: coredns
-      ClusterName: !Ref EKSCluster
-      AddonVersion: v1.10.1-eksbuild.1
-      ResolveConflicts: OVERWRITE
-
-  # kube-proxy Add-on
-  KubeProxyAddon:
-    Type: AWS::EKS::Addon
-    Properties:
-      AddonName: kube-proxy
-      ClusterName: !Ref EKSCluster
-      AddonVersion: v1.28.1-eksbuild.1
-      ResolveConflicts: OVERWRITE
+        Environment: production
 
 Outputs:
   ClusterName:
@@ -366,6 +376,12 @@ Outputs:
     Value: !GetAtt EKSCluster.Arn
     Export:
       Name: !Sub ${AWS::StackName}-ClusterArn
+
+  ClusterVersion:
+    Description: Version of the EKS cluster
+    Value: !GetAtt EKSCluster.Version
+    Export:
+      Name: !Sub ${AWS::StackName}-ClusterVersion
 
   NodeGroupName:
     Description: Name of the EKS node group
@@ -390,3 +406,15 @@ Outputs:
     Value: !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
     Export:
       Name: !Sub ${AWS::StackName}-PublicSubnetIds
+
+  ClusterSecurityGroupId:
+    Description: Security group ID for the cluster
+    Value: !Ref ClusterSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-ClusterSecurityGroupId
+
+  NodeGroupSecurityGroupId:
+    Description: Security group ID for the node group
+    Value: !Ref NodeGroupSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-NodeGroupSecurityGroupId
