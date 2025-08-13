@@ -351,9 +351,6 @@ Resources:
         DesiredSize: !Ref NodeGroupDesiredSize
       UpdateConfig:
         MaxUnavailable: 1
-      RemoteAccess:
-        SourceSecurityGroups:
-          - !Ref NodeGroupSecurityGroup
       Tags:
         Name: !Sub ${ClusterName}-nodegroup
         Environment: production
