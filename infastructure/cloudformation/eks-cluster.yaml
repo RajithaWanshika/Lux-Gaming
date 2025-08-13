@@ -247,7 +247,6 @@ Resources:
     Properties:
       Name: !Ref ClusterName
       RoleArn: !GetAtt EKSClusterRole.Arn
-      Version: '1.28'
       ResourcesVpcConfig:
         SecurityGroupIds:
           - !Ref ClusterSecurityGroup
@@ -373,12 +372,6 @@ Outputs:
     Value: !GetAtt EKSCluster.Arn
     Export:
       Name: !Sub ${AWS::StackName}-ClusterArn
-
-  ClusterVersion:
-    Description: Version of the EKS cluster
-    Value: !GetAtt EKSCluster.Version
-    Export:
-      Name: !Sub ${AWS::StackName}-ClusterVersion
 
   NodeGroupName:
     Description: Name of the EKS node group
