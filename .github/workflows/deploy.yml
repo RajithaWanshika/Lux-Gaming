@@ -56,7 +56,7 @@ jobs:
         
         # Deploy CloudFormation stack
         aws cloudformation deploy \
-          --template-file infrastructure/cloudformation/eks-cluster.yaml \
+          --template-file infastructure/cloudformation/eks-cluster.yaml \
           --stack-name ${{ env.STACK_NAME }} \
           --parameter-overrides \
             ClusterName=${{ env.EKS_CLUSTER_NAME }} \

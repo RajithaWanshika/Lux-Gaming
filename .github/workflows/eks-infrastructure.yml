@@ -1,0 +1,293 @@
+name: 🏗️ EKS Infrastructure Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'create'
+        type: choice
+        options:
+        - create
+        - update
+        - delete
+        - status
+      cluster_name:
+        description: 'EKS Cluster Name'
+        required: true
+        default: 'lugx-cluster-man'
+      node_group_size:
+        description: 'Node Group Desired Size'
+        required: true
+        default: '2'
+      node_instance_type:
+        description: 'Node Instance Type'
+        required: true
+        default: 't3.medium'
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: lugx-eks-infrastructure
+
+jobs:
+  manage-infrastructure:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 📊 Check current status
+      id: check-status
+      run: |
+        echo "🔍 Checking current infrastructure status..."
+        
+        # Check CloudFormation stack
+        if aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+          STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} --region ${{ env.AWS_REGION }} --query 'Stacks[0].StackStatus' --output text)
+          echo "CloudFormation Stack Status: $STACK_STATUS"
+          echo "stack_exists=true" >> $GITHUB_OUTPUT
+          echo "stack_status=$STACK_STATUS" >> $GITHUB_OUTPUT
+        else
+          echo "CloudFormation Stack: NOT_FOUND"
+          echo "stack_exists=false" >> $GITHUB_OUTPUT
+          echo "stack_status=NOT_FOUND" >> $GITHUB_OUTPUT
+        fi
+        
+        # Check EKS cluster
+        if aws eks describe-cluster --name ${{ github.event.inputs.cluster_name }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+          CLUSTER_STATUS=$(aws eks describe-cluster --name ${{ github.event.inputs.cluster_name }} --region ${{ env.AWS_REGION }} --query 'cluster.status' --output text)
+          echo "EKS Cluster Status: $CLUSTER_STATUS"
+          echo "cluster_exists=true" >> $GITHUB_OUTPUT
+          echo "cluster_status=$CLUSTER_STATUS" >> $GITHUB_OUTPUT
+        else
+          echo "EKS Cluster: NOT_FOUND"
+          echo "cluster_exists=false" >> $GITHUB_OUTPUT
+          echo "cluster_status=NOT_FOUND" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: 🏗️ Create Infrastructure
+      if: github.event.inputs.action == 'create'
+      run: |
+        if [ "${{ steps.check-status.outputs.stack_exists }}" = "true" ]; then
+          echo "⚠️ Infrastructure already exists!"
+          echo "Stack Status: ${{ steps.check-status.outputs.stack_status }}"
+          echo "Cluster Status: ${{ steps.check-status.outputs.cluster_status }}"
+          exit 1
+        fi
+        
+        echo "🚀 Creating EKS infrastructure..."
+        
+        aws cloudformation deploy \
+          --template-file infastructure/cloudformation/eks-cluster.yaml \
+          --stack-name ${{ env.STACK_NAME }} \
+          --parameter-overrides \
+            ClusterName=${{ github.event.inputs.cluster_name }} \
+            NodeGroupDesiredSize=${{ github.event.inputs.node_group_size }} \
+            NodeGroupInstanceType=${{ github.event.inputs.node_instance_type }} \
+            NodeGroupMinSize=1 \
+            NodeGroupMaxSize=10 \
+          --capabilities CAPABILITY_IAM \
+          --region ${{ env.AWS_REGION }}
+          
+        echo "✅ Infrastructure creation initiated"
+        
+    - name: 🔄 Update Infrastructure
+      if: github.event.inputs.action == 'update'
+      run: |
+        if [ "${{ steps.check-status.outputs.stack_exists }}" = "false" ]; then
+          echo "❌ No infrastructure found to update!"
+          exit 1
+        fi
+        
+        echo "🔄 Updating EKS infrastructure..."
+        
+        aws cloudformation deploy \
+          --template-file infastructure/cloudformation/eks-cluster.yaml \
+          --stack-name ${{ env.STACK_NAME }} \
+          --parameter-overrides \
+            ClusterName=${{ github.event.inputs.cluster_name }} \
+            NodeGroupDesiredSize=${{ github.event.inputs.node_group_size }} \
+            NodeGroupInstanceType=${{ github.event.inputs.node_instance_type }} \
+            NodeGroupMinSize=1 \
+            NodeGroupMaxSize=10 \
+          --capabilities CAPABILITY_IAM \
+          --region ${{ env.AWS_REGION }}
+          
+        echo "✅ Infrastructure update initiated"
+        
+    - name: 💥 Delete Infrastructure
+      if: github.event.inputs.action == 'delete'
+      run: |
+        if [ "${{ steps.check-status.outputs.stack_exists }}" = "false" ]; then
+          echo "❌ No infrastructure found to delete!"
+          exit 1
+        fi
+        
+        echo "💥 Deleting EKS infrastructure..."
+        echo "⚠️ This will delete the entire EKS cluster and all resources!"
+        
+        # Delete the CloudFormation stack
+        aws cloudformation delete-stack \
+          --stack-name ${{ env.STACK_NAME }} \
+          --region ${{ env.AWS_REGION }}
+          
+        echo "✅ Infrastructure deletion initiated"
+        echo "⏳ This process may take 10-15 minutes to complete"
+        
+    - name: ⏳ Wait for operation to complete
+      if: github.event.inputs.action == 'create' || github.event.inputs.action == 'update' || github.event.inputs.action == 'delete'
+      run: |
+        echo "⏳ Waiting for CloudFormation operation to complete..."
+        
+        if [ "${{ github.event.inputs.action }}" = "delete" ]; then
+          # Wait for stack deletion
+          aws cloudformation wait stack-delete-complete \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ Infrastructure deleted successfully"
+        else
+          # Wait for stack create/update
+          aws cloudformation wait stack-${{ github.event.inputs.action }}-complete \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ Infrastructure ${{ github.event.inputs.action }} completed successfully"
+        fi
+        
+    - name: 🔗 Configure kubectl (if cluster exists)
+      if: github.event.inputs.action != 'delete'
+      run: |
+        if aws eks describe-cluster --name ${{ github.event.inputs.cluster_name }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+          echo "🔗 Configuring kubectl..."
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ github.event.inputs.cluster_name }}
+          
+          # Wait for nodes to be ready
+          echo "⏳ Waiting for nodes to be ready..."
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s
+          
+          # Show cluster info
+          echo "📊 Cluster Information:"
+          kubectl get nodes
+          kubectl get pods --all-namespaces
+        else
+          echo "⚠️ EKS cluster not found or not ready yet"
+        fi
+        
+    - name: 🔧 Install essential cluster components (for new clusters)
+      if: github.event.inputs.action == 'create'
+      run: |
+        echo "🔧 Installing essential cluster components..."
+        
+        # Install AWS Load Balancer Controller
+        echo "Installing AWS Load Balancer Controller..."
+        
+        # Create service account with IRSA
+        eksctl create iamserviceaccount \
+          --cluster=${{ github.event.inputs.cluster_name }} \
+          --namespace=kube-system \
+          --name=aws-load-balancer-controller \
+          --role-name AmazonEKSLoadBalancerControllerRole \
+          --attach-policy-arn=arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess \
+          --approve \
+          --region=${{ env.AWS_REGION }} || echo "Service account creation failed or already exists"
+        
+        # Install Helm
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        
+        # Add EKS Helm repository
+        helm repo add eks https://aws.github.io/eks-charts
+        helm repo update
+        
+        # Install AWS Load Balancer Controller
+        helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+          -n kube-system \
+          --set clusterName=${{ github.event.inputs.cluster_name }} \
+          --set serviceAccount.create=false \
+          --set serviceAccount.name=aws-load-balancer-controller || echo "Load balancer controller installation failed or already exists"
+        
+        # Install EBS CSI Driver
+        echo "Installing EBS CSI Driver..."
+        kubectl apply -k "github.com/kubernetes-sigs/aws-ebs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.24"
+        
+        echo "✅ Essential components installation completed"
+        
+    - name: 📊 Get Infrastructure Details
+      if: github.event.inputs.action != 'delete'
+      run: |
+        echo "📊 Infrastructure Details:"
+        echo "========================"
+        
+        if [ "${{ steps.check-status.outputs.stack_exists }}" = "true" ] || [ "${{ github.event.inputs.action }}" = "create" ] || [ "${{ github.event.inputs.action }}" = "update" ]; then
+          # Get CloudFormation outputs
+          echo "CloudFormation Outputs:"
+          aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+            --output table
+          
+          # Get EKS cluster details
+          if aws eks describe-cluster --name ${{ github.event.inputs.cluster_name }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo ""
+            echo "EKS Cluster Details:"
+            aws eks describe-cluster \
+              --name ${{ github.event.inputs.cluster_name }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'cluster.{Name:name,Status:status,Version:version,Endpoint:endpoint,Platform:platformVersion}' \
+              --output table
+              
+            echo ""
+            echo "Node Groups:"
+            aws eks list-nodegroups \
+              --cluster-name ${{ github.event.inputs.cluster_name }} \
+              --region ${{ env.AWS_REGION }} \
+              --output table
+          fi
+        fi
+        
+    - name: 📋 Infrastructure Summary
+      if: always()
+      run: |
+        echo "## 🏗️ Infrastructure Management Summary" >> $GITHUB_STEP_SUMMARY
+        echo "**Action:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Cluster Name:** ${{ github.event.inputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Stack Name:** ${{ env.STACK_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        case "${{ github.event.inputs.action }}" in
+          "create")
+            echo "### ✅ Infrastructure Created:" >> $GITHUB_STEP_SUMMARY
+            echo "- EKS Cluster: ${{ github.event.inputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Node Group Size: ${{ github.event.inputs.node_group_size }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Instance Type: ${{ github.event.inputs.node_instance_type }}" >> $GITHUB_STEP_SUMMARY
+            echo "- AWS Load Balancer Controller: Installed" >> $GITHUB_STEP_SUMMARY
+            echo "- EBS CSI Driver: Installed" >> $GITHUB_STEP_SUMMARY
+            ;;
+          "update")
+            echo "### 🔄 Infrastructure Updated:" >> $GITHUB_STEP_SUMMARY
+            echo "- EKS Cluster: ${{ github.event.inputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Node Group Size: ${{ github.event.inputs.node_group_size }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Instance Type: ${{ github.event.inputs.node_instance_type }}" >> $GITHUB_STEP_SUMMARY
+            ;;
+          "delete")
+            echo "### 💥 Infrastructure Deleted:" >> $GITHUB_STEP_SUMMARY
+            echo "- EKS Cluster: ${{ github.event.inputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- All associated resources removed" >> $GITHUB_STEP_SUMMARY
+            ;;
+          "status")
+            echo "### 📊 Infrastructure Status:" >> $GITHUB_STEP_SUMMARY
+            echo "- Stack Exists: ${{ steps.check-status.outputs.stack_exists }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Stack Status: ${{ steps.check-status.outputs.stack_status }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Cluster Exists: ${{ steps.check-status.outputs.cluster_exists }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Cluster Status: ${{ steps.check-status.outputs.cluster_status }}" >> $GITHUB_STEP_SUMMARY
+            ;;
+        esac 
