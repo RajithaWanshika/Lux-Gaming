@@ -19,7 +19,8 @@ spec:
     spec:
       containers:
       - name: analytics-service
-        image: lugx-analytics:latest
+        image: rajithawan/lugx-analytics-image:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3004
         env:
@@ -30,17 +31,26 @@ spec:
         - name: NODE_ENV
           value: "development"
         - name: CLICKHOUSE_URL
-          value: "http://clickhouse:8123"
+          value: "https://vw70pqxnm6.us-east-1.aws.clickhouse.cloud:8443"
         - name: CLICKHOUSE_USER
-          value: "default"
+          valueFrom:
+            secretKeyRef:
+              name: analytics-secret
+              key: CLICKHOUSE_USER
         - name: CLICKHOUSE_PASSWORD
-          value: ""
+          valueFrom:
+            secretKeyRef:
+              name: analytics-secret
+              key: CLICKHOUSE_PASSWORD
         - name: CLICKHOUSE_DATABASE
           value: "lugx_analytics"
         - name: AWS_REGION
           value: "us-east-1"
         - name: S3_BUCKET_NAME
-          value: "lugx-analytics"
+          valueFrom:
+            secretKeyRef:
+              name: analytics-secret
+              key: S3_BUCKET_NAME
         - name: UPLOAD_INTERVAL_MINUTES
           value: "10"
         - name: DEBUG_ANALYTICS
@@ -78,4 +88,3 @@ spec:
       - name: analytics-logs
         emptyDir: {}
       restartPolicy: Always
-      imagePullPolicy: IfNotPresent
