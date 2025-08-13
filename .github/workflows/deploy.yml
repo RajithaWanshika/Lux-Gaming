@@ -10,7 +10,7 @@ env:
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: lugx-cluster-man
   EKS_NAMESPACE: lux-gaming
-  STACK_NAME: lugx-eks-infrastructure
+  STACK_NAME: lugx-gaming-eks-infrastructure
 
 jobs:
   check-and-create-infrastructure:

@@ -28,7 +28,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  STACK_NAME: lugx-eks-infrastructure
+  STACK_NAME: lugx-gaming-eks-infrastructure
 
 jobs:
   manage-infrastructure:
