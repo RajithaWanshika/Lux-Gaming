@@ -12,11 +12,12 @@ const port = process.env.PORT || 3004;
 app.use(
   cors({
     origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
+      "null",
+      "*"
     ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   })
 );
 
@@ -48,6 +49,14 @@ const getDeviceType = (userAgent) => {
 app.get("/", (req, res) =>
   res.send("Analytics Service Running - ClickHouse + S3 Export Demo")
 );
+
+app.get("/test", (req, res) => {
+  res.json({ 
+    message: "Analytics service is running", 
+    timestamp: new Date().toISOString(),
+    cors: "enabled"
+  });
+});
 
 app.post("/track/pageview", async (req, res) => {
   try {
@@ -161,6 +170,24 @@ app.post("/track/scroll", async (req, res) => {
 
 app.post("/track/session", async (req, res) => {
   try {
+    // Handle both JSON and form data
+    let body = req.body;
+    
+    // If body is a string, try to parse it as JSON
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (parseError) {
+        console.warn("Failed to parse session body as JSON:", parseError);
+        body = {};
+      }
+    }
+    
+    // If body is still undefined or null, use empty object
+    if (!body) {
+      body = {};
+    }
+
     const {
       userId,
       sessionId,
@@ -169,21 +196,21 @@ app.post("/track/session", async (req, res) => {
       duration,
       pageCount,
       initialReferrer,
-    } = req.body;
+    } = body;
 
     const userAgent = req.headers["user-agent"];
     const ipAddress = getClientIP(req);
 
     const sessionData = {
       userId: userId || "anonymous",
-      sessionId,
-      startTime,
-      endTime,
-      duration,
-      pageCount,
-      initialReferrer,
-      initialUserAgent: userAgent,
-      ipAddress,
+      sessionId: sessionId || `session_${Date.now()}`,
+      startTime: startTime || new Date().toISOString(),
+      endTime: endTime || null,
+      duration: duration || 0,
+      pageCount: pageCount || 1,
+      initialReferrer: initialReferrer || "",
+      initialUserAgent: userAgent || "",
+      ipAddress: ipAddress || "",
     };
 
     await clickHouse.insertSession(sessionData);

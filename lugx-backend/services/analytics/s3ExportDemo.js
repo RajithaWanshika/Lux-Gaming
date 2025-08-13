@@ -1,4 +1,5 @@
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+require("dotenv").config();
 const clickHouse = require("./clickhouse");
 
 class DemoS3ExportService {
@@ -11,13 +12,13 @@ class DemoS3ExportService {
       },
     });
 
-    this.bucketName = process.env.S3_BUCKET_NAME || "lugx-analytics-demo";
+    this.bucketName = process.env.S3_BUCKET_NAME || "lugx-analytics";
     this.uploadInterval = parseInt(process.env.UPLOAD_INTERVAL_MINUTES) || 10;
 
     this.lastUploadTime = new Date();
 
     console.log(
-      `Demo S3 Export: Uploading every ${this.uploadInterval} minutes to ${this.bucketName}`
+      `Demo S3 Export: Uploading CSV data every ${this.uploadInterval} minutes to ${this.bucketName}`
     );
     console.log(
       `Initial lastUploadTime (UTC): ${this.lastUploadTime.toISOString()}`
@@ -248,13 +249,31 @@ class DemoS3ExportService {
       }
 
       const dateFolder = this.getDateFolder(endTime);
-      const fileName = `page-views/${dateFolder}/page_views_${timestamp}.json`;
+      const fileName = `page-views/${dateFolder}/page_views_${timestamp}.csv`;
 
-      await this.uploadToS3(fileName, {
+      const csvData = this.convertToCSV(aggregatedData, [
+        "page_url",
+        "page_title",
+        "view_count",
+        "unique_users",
+        "unique_sessions",
+        "avg_time_on_page",
+        "device",
+        "referrer",
+        "user_agent",
+        "ip_address",
+        "avg_viewport_width",
+        "avg_viewport_height",
+        "time_bucket",
+        "date",
+        "hour",
+        "minute",
+      ]);
+
+      await this.uploadCSVToS3(fileName, csvData, {
         dataType: "page_views",
         timeRange: { start: startTime, end: endTime },
         recordCount: aggregatedData.length,
-        data: aggregatedData,
       });
 
       console.log(
@@ -280,13 +299,29 @@ class DemoS3ExportService {
       }
 
       const dateFolder = this.getDateFolder(endTime);
-      const fileName = `click-events/${dateFolder}/click_events_${timestamp}.json`;
+      const fileName = `click-events/${dateFolder}/click_events_${timestamp}.csv`;
 
-      await this.uploadToS3(fileName, {
+      const csvData = this.convertToCSV(aggregatedData, [
+        "page_url",
+        "element_type",
+        "element_text",
+        "element_id",
+        "element_class",
+        "click_count",
+        "unique_users",
+        "unique_sessions",
+        "avg_click_x",
+        "avg_click_y",
+        "time_bucket",
+        "date",
+        "hour",
+        "minute",
+      ]);
+
+      await this.uploadCSVToS3(fileName, csvData, {
         dataType: "click_events",
         timeRange: { start: startTime, end: endTime },
         recordCount: aggregatedData.length,
-        data: aggregatedData,
       });
 
       console.log(
@@ -309,13 +344,29 @@ class DemoS3ExportService {
       }
 
       const dateFolder = this.getDateFolder(endTime);
-      const fileName = `sessions/${dateFolder}/sessions_${timestamp}.json`;
+      const fileName = `sessions/${dateFolder}/sessions_${timestamp}.csv`;
 
-      await this.uploadToS3(fileName, {
+      const csvData = this.convertToCSV(sessionData, [
+        "user_id",
+        "session_id",
+        "start_time",
+        "end_time",
+        "duration",
+        "page_count",
+        "initial_referrer",
+        "initial_user_agent",
+        "ip_address",
+        "hour_bucket",
+        "date",
+        "hour",
+        "minute",
+        "session_duration_category",
+      ]);
+
+      await this.uploadCSVToS3(fileName, csvData, {
         dataType: "sessions",
         timeRange: { start: startTime, end: endTime },
         recordCount: sessionData.length,
-        data: sessionData,
       });
 
       console.log(
@@ -338,13 +389,29 @@ class DemoS3ExportService {
       }
 
       const dateFolder = this.getDateFolder(new Date());
-      const fileName = `metrics/${dateFolder}/metrics_${timestamp}.json`;
+      const fileName = `metrics/${dateFolder}/metrics_${timestamp}.csv`;
 
-      await this.uploadToS3(fileName, {
+      // Flatten metrics for CSV
+      const flatMetrics = [
+        {
+          timestamp: new Date().toISOString(),
+          page_views: metrics.last_hour?.page_views || 0,
+          click_events: metrics.last_hour?.click_events || 0,
+          active_sessions: metrics.last_hour?.active_sessions || 0,
+        },
+      ];
+
+      const csvData = this.convertToCSV(flatMetrics, [
+        "timestamp",
+        "page_views",
+        "click_events",
+        "active_sessions",
+      ]);
+
+      await this.uploadCSVToS3(fileName, csvData, {
         dataType: "real_time_metrics",
         recordCount: 1,
         timestamp: new Date(),
-        metrics,
       });
 
       console.log(`📈 Real-time metrics uploaded -> ${fileName}`);
@@ -376,11 +443,19 @@ class DemoS3ExportService {
             COUNT(DISTINCT session_id) as unique_sessions,
             AVG(time_on_page) as avg_time_on_page,
             device,
-            toStartOfMinute(timestamp) as time_bucket
+            referrer,
+            user_agent,
+            ip_address,
+            AVG(viewport_width) as avg_viewport_width,
+            AVG(viewport_height) as avg_viewport_height,
+            toStartOfMinute(timestamp) as time_bucket,
+            toDate(timestamp) as date,
+            toHour(timestamp) as hour,
+            toMinute(timestamp) as minute
           FROM lugx_analytics.page_views_stream
           WHERE timestamp >= '${this.toClickHouseDateTime(startTime)}'
           AND timestamp <= '${this.toClickHouseDateTime(endTime)}'
-          GROUP BY page_url, page_title, device, time_bucket
+          GROUP BY page_url, page_title, device, referrer, user_agent, ip_address, time_bucket, date, hour, minute
           ORDER BY time_bucket DESC, view_count DESC
         `,
         format: "JSONEachRow",
@@ -404,14 +479,21 @@ class DemoS3ExportService {
             page_url,
             element_type,
             element_text,
+            element_id,
+            element_class,
             COUNT(*) as click_count,
             COUNT(DISTINCT user_id) as unique_users,
             COUNT(DISTINCT session_id) as unique_sessions,
-            formatDateTime(timestamp, '%Y-%m-%d %H:%M:00') as time_bucket
+            AVG(click_x) as avg_click_x,
+            AVG(click_y) as avg_click_y,
+            formatDateTime(timestamp, '%Y-%m-%d %H:%M:00') as time_bucket,
+            toDate(timestamp) as date,
+            toHour(timestamp) as hour,
+            toMinute(timestamp) as minute
           FROM lugx_analytics.click_events_stream 
           WHERE timestamp >= '${this.toClickHouseDateTime(startTime)}' 
           AND timestamp <= '${this.toClickHouseDateTime(endTime)}'
-          GROUP BY page_url, element_type, element_text, time_bucket
+          GROUP BY page_url, element_type, element_text, element_id, element_class, time_bucket, date, hour, minute
           ORDER BY time_bucket
         `,
         format: "JSONEachRow",
@@ -438,7 +520,19 @@ class DemoS3ExportService {
             duration,
             page_count,
             initial_referrer,
-            formatDateTime(start_time, '%Y-%m-%d %H:00:00') as hour_bucket
+            initial_user_agent,
+            ip_address,
+            formatDateTime(start_time, '%Y-%m-%d %H:00:00') as hour_bucket,
+            toDate(start_time) as date,
+            toHour(start_time) as hour,
+            toMinute(start_time) as minute,
+            CASE 
+              WHEN duration < 60 THEN '0-1min'
+              WHEN duration < 300 THEN '1-5min'
+              WHEN duration < 900 THEN '5-15min'
+              WHEN duration < 1800 THEN '15-30min'
+              ELSE '30min+'
+            END as session_duration_category
           FROM lugx_analytics.sessions_stream 
           WHERE timestamp >= '${this.toClickHouseDateTime(startTime)}' 
           AND timestamp <= '${this.toClickHouseDateTime(endTime)}'
@@ -532,13 +626,32 @@ class DemoS3ExportService {
       }
 
       const dateFolder = this.getDateFolder(endTime);
-      const fileName = `scroll-depth/${dateFolder}/scroll_depth_${timestamp}.json`;
+      const fileName = `scroll-depth/${dateFolder}/scroll_depth_${timestamp}.csv`;
 
-      await this.uploadToS3(fileName, {
+      const csvData = this.convertToCSV(aggregatedData, [
+        "page_url",
+        "total_scrolls",
+        "unique_users",
+        "unique_sessions",
+        "avg_max_scroll_depth",
+        "avg_time_to_max_scroll",
+        "avg_page_height",
+        "avg_viewport_height",
+        "reached_25_percent",
+        "reached_50_percent",
+        "reached_75_percent",
+        "reached_100_percent",
+        "scroll_milestones",
+        "time_bucket",
+        "date",
+        "hour",
+        "minute",
+      ]);
+
+      await this.uploadCSVToS3(fileName, csvData, {
         dataType: "scroll_depth",
         timeRange: { start: startTime, end: endTime },
         recordCount: aggregatedData.length,
-        data: aggregatedData,
       });
 
       console.log(
@@ -570,11 +683,15 @@ class DemoS3ExportService {
             countIf(max_scroll_depth >= 50) as reached_50_percent,
             countIf(max_scroll_depth >= 75) as reached_75_percent,
             countIf(max_scroll_depth >= 100) as reached_100_percent,
-            formatDateTime(timestamp, '%Y-%m-%d %H:%M:00') as time_bucket
+            scroll_milestones,
+            formatDateTime(timestamp, '%Y-%m-%d %H:%M:00') as time_bucket,
+            toDate(timestamp) as date,
+            toHour(timestamp) as hour,
+            toMinute(timestamp) as minute
           FROM lugx_analytics.scroll_depth_stream 
           WHERE timestamp >= '${this.toClickHouseDateTime(startTime)}' 
           AND timestamp <= '${this.toClickHouseDateTime(endTime)}'
-          GROUP BY page_url, time_bucket
+          GROUP BY page_url, scroll_milestones, time_bucket, date, hour, minute
           ORDER BY time_bucket
         `,
         format: "JSONEachRow",
@@ -602,24 +719,57 @@ class DemoS3ExportService {
       .replace(/\.\d{3}Z$/, "");
   }
 
-  async uploadToS3(fileName, data) {
+  // CSV conversion utility
+  convertToCSV(data, columns) {
+    if (!data || data.length === 0) return "";
+
+    // Create header row
+    const header = columns.join(",");
+
+    // Create data rows
+    const rows = data.map((row) => {
+      return columns
+        .map((column) => {
+          const value = row[column];
+          // Handle values that need to be quoted (contain commas, quotes, or newlines)
+          if (value === null || value === undefined) {
+            return "";
+          }
+          const stringValue = String(value);
+          if (
+            stringValue.includes(",") ||
+            stringValue.includes('"') ||
+            stringValue.includes("\n")
+          ) {
+            // Escape quotes and wrap in quotes
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        })
+        .join(",");
+    });
+
+    return [header, ...rows].join("\n");
+  }
+
+  async uploadCSVToS3(fileName, csvData, metadata) {
     try {
-      console.log(`🔍 S3 Upload Debug for ${fileName}:`);
-      console.log(`  - dataType: ${data.dataType}`);
+      console.log(`🔍 S3 CSV Upload Debug for ${fileName}:`);
+      console.log(`  - dataType: ${metadata.dataType}`);
       console.log(
         `  - recordCount: ${
-          data.recordCount
-        } (type: ${typeof data.recordCount})`
+          metadata.recordCount
+        } (type: ${typeof metadata.recordCount})`
       );
 
       const params = {
         Bucket: this.bucketName,
         Key: fileName,
-        Body: JSON.stringify(data, null, 2),
-        ContentType: "application/json",
+        Body: csvData,
+        ContentType: "text/csv",
         Metadata: {
-          dataType: data.dataType || "unknown",
-          recordCount: (data.recordCount || 0).toString(),
+          dataType: metadata.dataType || "unknown",
+          recordCount: (metadata.recordCount || 0).toString(),
           uploadedAt: new Date().toISOString(),
         },
       };
@@ -627,10 +777,10 @@ class DemoS3ExportService {
       const command = new PutObjectCommand(params);
       const result = await this.s3Client.send(command);
 
-      console.log(`✅ S3 Upload successful: ${fileName}`);
+      console.log(`✅ S3 CSV Upload successful: ${fileName}`);
       return result;
     } catch (error) {
-      console.error(`❌ S3 Upload failed: ${fileName}`, error);
+      console.error(`❌ S3 CSV Upload failed: ${fileName}`, error);
       throw error;
     }
   }

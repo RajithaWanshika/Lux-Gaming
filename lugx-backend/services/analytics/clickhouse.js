@@ -1,4 +1,5 @@
 const { createClient } = require("@clickhouse/client");
+require("dotenv").config();
 
 class ClickHouseService {
   constructor() {
@@ -9,10 +10,10 @@ class ClickHouseService {
     const config = {
       url:
         process.env.CLICKHOUSE_URL ||
-        "https://akl2spzdfi.us-east-2.aws.clickhouse.cloud:8443",
+        "https://vw70pqxnm6.us-east-1.aws.clickhouse.cloud:8443",
       username: process.env.CLICKHOUSE_USER || "default",
       password: process.env.CLICKHOUSE_PASSWORD || "",
-      application: "analytics-service",
+      application: "lugx-analytics-service",
       clickhouse_settings: {
         async_insert: 1,
         wait_for_async_insert: 0,
@@ -47,42 +48,37 @@ class ClickHouseService {
     const isKubernetesService =
       config.url && config.url.includes(".svc.cluster.local");
 
-    if (!config.url) {
-      console.log("❌ No URL provided");
-      return false;
-    }
+    // if (!config.url) {
+    //   console.log("❌ No URL provided");
+    //   return false;
+    // }
 
-    if (!isKubernetesService) {
-      if (
-        config.url.includes("your-clickhouse-url") ||
-        config.url === "https://akl2spzdfi.us-east-2.aws.clickhouse.cloud:8443"
-      ) {
-        console.log("❌ Placeholder URL detected");
-        return false;
-      }
-    } else {
-      console.log("Kubernetes service URL detected, allowing");
-    }
+    // if (!isKubernetesService) {
+    //   if (
+    //     config.url.includes("your-clickhouse-url") ||
+    //     config.url === "https://vw70pqxnm6.us-east-1.aws.clickhouse.cloud:8443"
+    //   ) {
+    //     console.log("❌ Placeholder URL detected");
+    //     return false;
+    //   }
+    // } else {
+    //   console.log("Kubernetes service URL detected, allowing");
+    // }
 
-    if (!config.username || config.username.trim() === "") {
-      console.log("❌ Empty username detected");
-      return false;
-    }
+    // if (!config.username || config.username.trim() === "") {
+    //   console.log("❌ Empty username detected");
+    //   return false;
+    // }
 
-    if (config.password !== undefined && config.password !== null) {
-      if (
-        config.password === "your-secure-password" ||
-        config.password === "your-password"
-      ) {
-        console.log("❌ Placeholder password detected");
-        return false;
-      }
-    }
-
-    if (config.password === "jg3YoKz2K~vw9") {
-      console.log("❌ Demo/hardcoded password detected");
-      return false;
-    }
+    // if (config.password !== undefined && config.password !== null) {
+    //   if (
+    //     config.password === "your-secure-password" ||
+    //     config.password === "your-password"
+    //   ) {
+    //     console.log("❌ Placeholder password detected");
+    //     return false;
+    //   }
+    // }
 
     console.log(
       "Credentials appear valid (empty password allowed for default user)"

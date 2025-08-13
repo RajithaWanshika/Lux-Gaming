@@ -5,13 +5,13 @@ echo "🚀 Setting up EKS CloudFormation infrastructure..."
 
 # Create directory structure
 echo "📁 Creating directory structure..."
-mkdir -p infrastructure/cloudformation
+mkdir -p infastructure/cloudformation
 mkdir -p .github/workflows
 
 # Check if CloudFormation template exists
-if [ ! -f "infrastructure/cloudformation/eks-cluster.yaml" ]; then
+if [ ! -f "infastructure/cloudformation/eks-cluster.yaml" ]; then
     echo "❌ CloudFormation template not found!"
-    echo "Please create infrastructure/cloudformation/eks-cluster.yaml with the EKS CloudFormation template"
+    echo "Please create infastructure/cloudformation/eks-cluster.yaml with the EKS CloudFormation template"
     exit 1
 fi
 
@@ -58,7 +58,7 @@ fi
 
 # Validate CloudFormation template
 echo "🔍 Validating CloudFormation template..."
-aws cloudformation validate-template --template-body file://infrastructure/cloudformation/eks-cluster.yaml > /dev/null 2>&1
+aws cloudformation validate-template --template-body file://infastructure/cloudformation/eks-cluster.yaml > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
     echo "✅ CloudFormation template is valid"
