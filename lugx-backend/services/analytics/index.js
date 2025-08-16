@@ -363,7 +363,50 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     version: "2.0.0",
     mode: "ClickHouse + S3",
+    service: "analytics",
   });
+});
+
+app.get("/health/analytics", (req, res) => {
+  try {
+    const healthStatus = {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      version: "2.0.0",
+      service: "analytics",
+      mode: "ClickHouse + S3",
+      dependencies: {
+        clickhouse: clickHouse.isConnected ? "connected" : "disconnected",
+        s3Export: "active",
+      },
+      environment: {
+        port: port,
+        nodeEnv: process.env.NODE_ENV || "development",
+        clickhouseUrl: process.env.CLICKHOUSE_URL
+          ? "configured"
+          : "not configured",
+        s3Bucket: process.env.S3_BUCKET_NAME || "lugx-analytics-demo",
+        uploadInterval: `${process.env.UPLOAD_INTERVAL_MINUTES || 10} minutes`,
+      },
+      uptime: process.uptime(),
+    };
+
+    if (!clickHouse.isConnected) {
+      healthStatus.status = "degraded";
+      healthStatus.warnings = [
+        "ClickHouse connection unavailable - running in mock mode",
+      ];
+    }
+
+    res.json(healthStatus);
+  } catch (error) {
+    res.status(500).json({
+      status: "unhealthy",
+      timestamp: new Date().toISOString(),
+      service: "analytics",
+      error: error.message,
+    });
+  }
 });
 
 app.listen(port, () => {

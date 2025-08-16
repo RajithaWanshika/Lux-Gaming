@@ -10,7 +10,9 @@ COPY . .
 
 EXPOSE 3004
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3004/ || exit 1
+RUN apk add --no-cache curl
 
-CMD ["npm", "start"] 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3004/health/analytics || exit 1
+
+CMD ["npm", "start"]
