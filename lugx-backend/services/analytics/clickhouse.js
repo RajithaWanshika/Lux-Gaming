@@ -45,44 +45,11 @@ class ClickHouseService {
   }
 
   validateCredentials(config) {
-    const isKubernetesService =
-      config.url && config.url.includes(".svc.cluster.local");
-
-    // if (!config.url) {
-    //   console.log("❌ No URL provided");
-    //   return false;
-    // }
-
-    // if (!isKubernetesService) {
-    //   if (
-    //     config.url.includes("your-clickhouse-url") ||
-    //     config.url === "https://vw70pqxnm6.us-east-1.aws.clickhouse.cloud:8443"
-    //   ) {
-    //     console.log("❌ Placeholder URL detected");
-    //     return false;
-    //   }
-    // } else {
-    //   console.log("Kubernetes service URL detected, allowing");
-    // }
-
-    // if (!config.username || config.username.trim() === "") {
-    //   console.log("❌ Empty username detected");
-    //   return false;
-    // }
-
-    // if (config.password !== undefined && config.password !== null) {
-    //   if (
-    //     config.password === "your-secure-password" ||
-    //     config.password === "your-password"
-    //   ) {
-    //     console.log("❌ Placeholder password detected");
-    //     return false;
-    //   }
-    // }
-
-    console.log(
-      "Credentials appear valid (empty password allowed for default user)"
-    );
+    if (!config.url) {
+      console.log("❌ No URL provided");
+      return false;
+    }
+    console.log("Credentials appear valid");
     return true;
   }
 

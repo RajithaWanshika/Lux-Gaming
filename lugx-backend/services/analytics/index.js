@@ -12,12 +12,13 @@ const port = process.env.PORT || 3004;
 app.use(
   cors({
     origin: [
-      "null",
-      "*"
+      "http://k8s-luxgamingalb-5a170d9168-634539224.us-east-1.elb.amazonaws.com",
+      "http://localhost:3000",
+      "http://localhost:8080",
     ],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 
@@ -51,10 +52,10 @@ app.get("/", (req, res) =>
 );
 
 app.get("/test", (req, res) => {
-  res.json({ 
-    message: "Analytics service is running", 
+  res.json({
+    message: "Analytics service is running",
     timestamp: new Date().toISOString(),
-    cors: "enabled"
+    cors: "enabled",
   });
 });
 
@@ -172,9 +173,9 @@ app.post("/track/session", async (req, res) => {
   try {
     // Handle both JSON and form data
     let body = req.body;
-    
+
     // If body is a string, try to parse it as JSON
-    if (typeof body === 'string') {
+    if (typeof body === "string") {
       try {
         body = JSON.parse(body);
       } catch (parseError) {
@@ -182,7 +183,7 @@ app.post("/track/session", async (req, res) => {
         body = {};
       }
     }
-    
+
     // If body is still undefined or null, use empty object
     if (!body) {
       body = {};
